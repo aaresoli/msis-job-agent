@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hope-job-agent"
+version = "0.1.0"
+description = "Starter scaffold for the Kelley HOPE MSIS Job Agent project."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "Kelley HOPE MSIS Job Agent Team" }
+]
+dependencies = [
+  "fastapi>=0.111.0",
+  "pydantic>=2.7.0",
+  "pydantic-settings>=2.3.0",
+  "uvicorn>=0.30.0"
+]
+
+[project.optional-dependencies]
+dev = [
+  "black>=24.4.0",
+  "mypy>=1.10.0",
+  "pytest>=8.2.0",
+  "ruff>=0.5.0"
+]
+
+[project.scripts]
+hope-job-agent = "hope_job_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = []
+
+[tool.pytest.ini_options]
+addopts = "-q --capture=sys"
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+python_version = "3.11"
+packages = ["hope_job_agent"]
+ignore_missing_imports = true
+strict = false
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true

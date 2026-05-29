@@ -15,6 +15,6 @@ class JobPosting(BaseModel):
     description: str
     url: str
     posted_date: date | None = None
-    available: bool | None = None
+    availability: bool | None = None
     concentration_tags: list[str] = Field(default_factory=list)
     opt_cpt_flag: bool | None = None

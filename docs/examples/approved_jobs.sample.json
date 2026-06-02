@@ -1,0 +1,43 @@
+{
+  "metadata": {
+    "source_name": "approved_local_sample",
+    "source_owner": "Graduate Career Services",
+    "approved_by": "Project faculty advisor",
+    "approval_date": "2026-06-02",
+    "access_method": "Local sample export for development and demo runs only",
+    "terms_reviewed": true,
+    "documentation_url": "docs/source_approval_checklist.md"
+  },
+  "jobs": [
+    {
+      "title": "Data Analyst Intern",
+      "company": "Example Analytics",
+      "location": "Bloomington, IN",
+      "description": "Use SQL, Python, and dashboards to analyze business data.",
+      "url": "https://example.com/jobs/data-analyst-intern",
+      "posted_date": "2026-05-20",
+      "concentration_tags": ["Business Analytics"],
+      "opt_cpt_flag": true
+    },
+    {
+      "title": "Security Analyst Intern",
+      "company": "Example Security",
+      "location": "Indianapolis, IN",
+      "description": "Support vulnerability review, risk analysis, and security reporting.",
+      "url": "https://example.com/jobs/security-analyst-intern",
+      "posted_date": "2026-05-22",
+      "concentration_tags": ["Cybersecurity"],
+      "opt_cpt_flag": true
+    },
+    {
+      "title": "ERP Systems Analyst",
+      "company": "Example Manufacturing",
+      "location": "Chicago, IL",
+      "description": "Improve enterprise systems workflows and reporting for operations teams.",
+      "url": "https://example.com/jobs/erp-systems-analyst",
+      "posted_date": "2026-05-25",
+      "concentration_tags": ["Enterprise Systems"],
+      "opt_cpt_flag": null
+    }
+  ]
+}

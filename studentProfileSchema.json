@@ -1,0 +1,217 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hope.kelley.iu.edu/schemas/student-profile/v1",
+  "title": "StudentProfile",
+  "description": "MSIS AI Job Agent — Student Profile Schema v1. Sprint 1 · S1-23 · Sang · Due Jun 11 2026. 13 profile fields across 6 groups, derived from 9 survey responses (S1-14 affinity map).",
+  "type": "object",
+
+  "required": [
+    "concentration",
+    "academic_stage",
+    "target_roles",
+    "work_auth_status",
+    "geo_preference",
+    "delivery_preference",
+    "profile_version",
+    "updated_at",
+    "ai_matching_consent"
+  ],
+
+  "properties": {
+
+    "name": {
+      "description": "Student's display name. Used for digest greetings and internal logging. Not shared externally.",
+      "type": "string",
+      "minLength": 1,
+      "x-group": "Academic Info",
+      "x-required": false,
+      "x-source": "Student fills in"
+    },
+
+    "concentration": {
+      "description": "MSIS concentration. Primary signal for job-category matching.",
+      "type": "string",
+      "enum": [
+        "Digital Transformation with AI",
+        "Data Analytics and AI",
+        "Cybersecurity",
+        "Information Systems Research in AI"
+      ],
+      "x-group": "Academic Info",
+      "x-required": true,
+      "x-source": "Student fills in"
+    },
+
+    "academic_stage": {
+      "description": "Current stage in the programme. Affects job-urgency ranking — returning students are prioritised.",
+      "type": "string",
+      "enum": [
+        "Incoming student (Fall)",
+        "Returning / finishing up"
+      ],
+      "x-group": "Academic Info",
+      "x-required": true,
+      "x-source": "Student fills in"
+    },
+
+    "target_roles": {
+      "description": "Preferred job roles. The #1 filter for matching. Pick 1–5.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "IT Consultant / Tech Risk",
+          "Data Analyst / BI Engineer",
+          "Cybersecurity Analyst",
+          "Product / Project Manager",
+          "Software Engineer",
+          "Other"
+        ]
+      },
+      "x-group": "What Jobs You Want",
+      "x-required": true,
+      "x-source": "Student fills in"
+    },
+
+    "skills": {
+      "description": "Free-text skill tags (e.g. Python, SQL, Tableau, Risk Management). Used for secondary relevance scoring.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "default": [],
+      "x-group": "What Jobs You Want",
+      "x-required": false,
+      "x-source": "Student fills in"
+    },
+
+    "work_auth_status": {
+      "description": "Hard filter — the agent won't show sponsorship-required jobs to citizens, and vice-versa.",
+      "type": "string",
+      "enum": [
+        "U.S. Citizen / Green Card",
+        "Need CPT / OPT sponsorship"
+      ],
+      "x-group": "Work Authorization",
+      "x-required": true,
+      "x-source": "Student fills in"
+    },
+
+    "opt_eligibility_date": {
+      "description": "OPT/CPT start date (MM/DD/YYYY). Only shown and required when work_auth_status is 'Need CPT / OPT sponsorship'. Jobs starting before this date are suppressed.",
+      "type": ["string", "null"],
+      "format": "date",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+      "default": null,
+      "x-group": "Work Authorization",
+      "x-required": "conditional — only when work_auth_status = Need CPT / OPT sponsorship",
+      "x-source": "Student fills in"
+    },
+
+    "geo_preference": {
+      "description": "Preferred job regions. Multi-select; at least one value required.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "Midwest (Chicago, Indy, Cincy)",
+          "East Coast (NYC, Boston, DC)",
+          "South/Southwest (Austin, Dallas, Atlanta)",
+          "West Coast (SF, Seattle, LA)",
+          "Open to anywhere",
+          "Remote only"
+        ]
+      },
+      "x-group": "Location",
+      "x-required": true,
+      "x-source": "Student fills in"
+    },
+
+    "remote_preference": {
+      "description": "In-person vs. remote preference. Used to filter by job work-mode. Optional.",
+      "type": ["string", "null"],
+      "enum": [
+        "Remote only",
+        "Hybrid is fine",
+        "On-site is fine",
+        "No preference",
+        null
+      ],
+      "default": null,
+      "x-group": "Location",
+      "x-required": false,
+      "x-source": "Student fills in"
+    },
+
+    "delivery_preference": {
+      "description": "How the student wants to receive job-match notifications.",
+      "type": "string",
+      "enum": [
+        "Dashboard / spreadsheet view",
+        "Daily or weekly email",
+        "Slack / Teams message",
+        "Push notification"
+      ],
+      "x-group": "How You Want to Hear About Jobs",
+      "x-required": true,
+      "x-source": "Student fills in"
+    },
+
+    "match_frequency": {
+      "description": "How often the agent runs and delivers new matches. Defaults to daily.",
+      "type": "string",
+      "enum": [
+        "Real-time (as they're posted)",
+        "Once a day",
+        "Once a week"
+      ],
+      "default": "Once a day",
+      "x-group": "How You Want to Hear About Jobs",
+      "x-required": false,
+      "x-source": "Student fills in"
+    },
+
+    "profile_version": {
+      "description": "Increments on every profile save. Starts at 1. Used to roll back if something breaks.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "x-group": "System Fields",
+      "x-required": true,
+      "x-source": "Auto-filled"
+    },
+
+    "updated_at": {
+      "description": "UTC ISO-8601 timestamp of last profile save. Profiles not updated in 30+ days are flagged as stale.",
+      "type": "string",
+      "format": "date-time",
+      "x-group": "System Fields",
+      "x-required": true,
+      "x-source": "Auto-filled"
+    },
+
+    "ai_matching_consent": {
+      "description": "The agent will not run unless this is true. Defaults to false — the student must explicitly opt in during setup.",
+      "type": "boolean",
+      "default": false,
+      "x-group": "System Fields",
+      "x-required": true,
+      "x-source": "Auto-filled"
+    }
+
+  },
+
+  "additionalProperties": false,
+
+  "if": {
+    "properties": {
+      "work_auth_status": { "const": "Need CPT / OPT sponsorship" }
+    }
+  },
+  "then": {
+    "required": ["opt_eligibility_date"],
+    "properties": {
+      "opt_eligibility_date": { "type": "string", "format": "date" }
+    }
+  }
+}

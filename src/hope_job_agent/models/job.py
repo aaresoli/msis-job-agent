@@ -16,4 +16,5 @@ class JobPosting(BaseModel):
     url: str
     posted_date: date | None = None
     concentration_tags: list[str] = Field(default_factory=list)
+    role_tags: list[str] = Field(default_factory=list)
     opt_cpt_flag: bool | None = None

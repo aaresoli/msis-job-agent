@@ -72,7 +72,7 @@ def rank_jobs_for_student(
     return sorted(
         matches,
         key=lambda match: (
-            match.score,
+            match.score[0],
             match.job.posted_date is not None,
             match.job.posted_date,
             match.job.company,

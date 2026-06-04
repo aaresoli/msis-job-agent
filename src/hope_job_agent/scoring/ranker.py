@@ -58,7 +58,7 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
     elif seniority_score <= -1:
         seniority_label = "Entry"
         
-    return score
+    return score, seniority_label
 
 
 def rank_jobs_for_student(

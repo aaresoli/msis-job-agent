@@ -1,4 +1,4 @@
-"""Job posting model used across ingestion, ranking, and delivery."""
+a"""Job posting model used across ingestion, ranking, and delivery."""
 
 from datetime import date
 
@@ -13,7 +13,6 @@ class JobPosting(BaseModel):
     company: str
     location: str
     description: str
-    seniority: str
     url: str
     posted_date: date | None = None
     concentration_tags: list[str] = Field(default_factory=list)

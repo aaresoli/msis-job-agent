@@ -40,13 +40,13 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
         score += 1.0
 
     for term in searchable_text:
-        if _contains_term(["manager", "director", "lead", "principal", "executive", "head"], term)
+        if _contains_term(["manager", "director", "lead", "principal", "executive", "head"], term) == True:
             seniority_score += 2.0
-        if _contains_term(["senior", "experienced"], term)
+        if _contains_term(["senior", "experienced"], term) == True:
             seniority_score += 1.0
-        if _contains_term(["intern", "new grad", "entry", "junior", "rotational"], term)
+        if _contains_term(["intern", "new grad", "entry", "junior", "rotational"], term) == True:
             seniority_score -= 1.0
-        if _contains_term(["internship", "graduate"], term)
+        if _contains_term(["internship", "graduate"], term) == True:
             seniority_score -= 2.0
         
     if seniority_score >=2:

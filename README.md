@@ -12,6 +12,9 @@ The current code provides:
 
 - Package structure for a FastAPI-ready Python backend
 - Safe source adapter interfaces and placeholder stubs
+- A compliant local JSON approved-source adapter for v0 ingestion demos
+- A thin-slice CLI runner for ingestion, normalization, validation,
+  classification, and deduplication
 - Simple model, normalization, deduplication, ranking, and digest helpers
 - Documentation placeholders for architecture, compliance, and handoff
 - pytest-based starter tests
@@ -44,6 +47,15 @@ Never commit real secrets.
 
 ```bash
 pytest
+```
+
+## Run The V0 Pipeline
+
+The v0 runner only reads local approved JSON exports. It does not perform live
+scraping or connect to restricted job platforms.
+
+```bash
+hope-job-agent run-pipeline --source-file docs/examples/approved_jobs.sample.json
 ```
 
 ## Developer Commands

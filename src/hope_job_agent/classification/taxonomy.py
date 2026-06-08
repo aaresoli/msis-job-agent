@@ -1,13 +1,156 @@
-"""MSIS concentration taxonomy.
-
-These categories are starter values and may be adjusted later based on
-Graduate Career Services feedback.
-"""
+"""MSIS role and concentration taxonomy used for v0 job classification."""
 
 MSIS_CONCENTRATIONS = [
-    "Business Analytics",
+    "Digital Transformation with AI",
+    "Data Analytics and AI",
     "Cybersecurity",
-    "Digital Enterprise Systems",
-    "Enterprise Systems",
-    "IT Strategy / Consulting",
+    "Information Systems Research in AI",
 ]
+
+MSIS_TARGET_ROLES = [
+    "IT Consultant / Tech Risk",
+    "Data Analyst / BI Engineer",
+    "Cybersecurity Analyst",
+    "Product / Project Manager",
+    "Software Engineer",
+    "Other",
+]
+
+LEGACY_CONCENTRATION_ALIASES = {
+    "Business Analytics": "Data Analytics and AI",
+    "Digital Enterprise Systems": "Digital Transformation with AI",
+    "Enterprise Systems": "Digital Transformation with AI",
+    "IT Strategy / Consulting": "Digital Transformation with AI",
+}
+
+ROLE_TO_CONCENTRATIONS = {
+    "IT Consultant / Tech Risk": [
+        "Digital Transformation with AI",
+        "Cybersecurity",
+    ],
+    "Data Analyst / BI Engineer": [
+        "Data Analytics and AI",
+        "Information Systems Research in AI",
+    ],
+    "Cybersecurity Analyst": ["Cybersecurity"],
+    "Product / Project Manager": ["Digital Transformation with AI"],
+    "Software Engineer": ["Digital Transformation with AI"],
+    "Other": [],
+}
+
+ROLE_KEYWORDS = {
+    "IT Consultant / Tech Risk": [
+        "it consultant",
+        "technology consultant",
+        "tech risk",
+        "technology risk",
+        "risk advisory",
+        "it audit",
+        "process improvement",
+        "business process",
+        "erp consultant",
+        "systems consultant",
+    ],
+    "Data Analyst / BI Engineer": [
+        "data analyst",
+        "business analyst",
+        "bi engineer",
+        "business intelligence",
+        "analytics engineer",
+        "reporting analyst",
+        "dashboard",
+        "tableau",
+        "power bi",
+        "sql",
+        "data visualization",
+    ],
+    "Cybersecurity Analyst": [
+        "cybersecurity analyst",
+        "security analyst",
+        "cybersecurity",
+        "information security",
+        "infosec",
+        "soc analyst",
+        "siem",
+        "splunk",
+        "threat",
+        "vulnerability",
+        "nist",
+        "grc",
+    ],
+    "Product / Project Manager": [
+        "product manager",
+        "project manager",
+        "program manager",
+        "product owner",
+        "scrum master",
+        "agile",
+        "pmp",
+        "stakeholder management",
+    ],
+    "Software Engineer": [
+        "software engineer",
+        "software developer",
+        "application developer",
+        "full stack",
+        "frontend",
+        "backend",
+        "api",
+        "java",
+        "python developer",
+        "cloud engineer",
+        "devops",
+    ],
+}
+
+CONCENTRATION_KEYWORDS = {
+    "Digital Transformation with AI": [
+        "digital transformation",
+        "ai transformation",
+        "automation",
+        "enterprise systems",
+        "erp",
+        "salesforce",
+        "cloud",
+        "agile",
+        "product",
+        "project",
+        "consulting",
+    ],
+    "Data Analytics and AI": [
+        "data analytics",
+        "analytics",
+        "business intelligence",
+        "machine learning",
+        "ai",
+        "sql",
+        "python",
+        "tableau",
+        "power bi",
+        "dashboard",
+        "forecasting",
+    ],
+    "Cybersecurity": [
+        "cybersecurity",
+        "security",
+        "risk management",
+        "threat",
+        "vulnerability",
+        "siem",
+        "nist",
+        "grc",
+        "incident response",
+    ],
+    "Information Systems Research in AI": [
+        "research",
+        "research analyst",
+        "nlp",
+        "natural language processing",
+        "literature review",
+        "experiment",
+        "statistical modeling",
+        "r",
+        "machine learning",
+        "ai",
+    ],
+}

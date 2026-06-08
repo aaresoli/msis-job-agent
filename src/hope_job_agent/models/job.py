@@ -1,4 +1,4 @@
-"""Job posting model used across ingestion, ranking, and delivery."""
+a"""Job posting model used across ingestion, ranking, and delivery."""
 
 from datetime import date
 

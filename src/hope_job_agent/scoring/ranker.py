@@ -24,6 +24,8 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
     """Score a job based on skills, target roles, and concentration overlap."""
 
     searchable_text = f"{job.title} {job.description}".lower()
+    seniority_score = 0.0
+    seniority_label = ""
     score = 0.0
 
     for skill in _normalize_terms(student.skills):
@@ -37,7 +39,26 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
     if student.concentration in job.concentration_tags:
         score += 1.0
 
-    return score
+    for term in searchable_text:
+        if _contains_term(["manager", "director", "lead", "principal", "executive", "head"], term) == True:
+            seniority_score += 2.0
+        if _contains_term(["senior", "experienced"], term) == True:
+            seniority_score += 1.0
+        if _contains_term(["intern", "new grad", "entry", "junior", "rotational"], term) == True:
+            seniority_score -= 1.0
+        if _contains_term(["internship", "graduate"], term) == True:
+            seniority_score -= 2.0
+        
+    if seniority_score >=2:
+        seniority_label = "Senior"
+    elif seniority_score == 1:
+        seniority_label = "Mid"
+    elif seniority_score == 0:
+        seniority_label = "Early/Mid"
+    elif seniority_score <= -1:
+        seniority_label = "Entry"
+        
+    return score, seniority_label
 
 
 def rank_jobs_for_student(
@@ -51,7 +72,7 @@ def rank_jobs_for_student(
     return sorted(
         matches,
         key=lambda match: (
-            match.score,
+            match.score[0],
             match.job.posted_date is not None,
             match.job.posted_date,
             match.job.company,

@@ -21,9 +21,13 @@ def _contains_term(text: str, term: str) -> bool:
 
 
 def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
-    """Score a job based on skills, target roles, and concentration overlap."""
+    """Score a job based on skills, target roles, concentration overlap, and position seniority"""
 
     searchable_text = f"{job.title} {job.description}".lower()
+    senior_def = ["manager", "director", "lead", "principal", "executive", "head", "expert"]
+    mid_def = ["senior", "experienced", "proficient", "seasoned"]
+    early_mid_def = ["intern", "new grad", "entry", "junior", "rotational", "novice"]
+    entry_def = ["internship", "graduate", "trainee"]
     seniority_score = 0.0
     seniority_label = ""
     score = 0.0
@@ -40,13 +44,13 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
         score += 1.0
 
     for term in searchable_text:
-        if _contains_term(["manager", "director", "lead", "principal", "executive", "head"], term) == True:
+        if _contains_term(senior_def, term) == True:
             seniority_score += 2.0
-        if _contains_term(["senior", "experienced"], term) == True:
+        if _contains_term(mid_def, term) == True:
             seniority_score += 1.0
-        if _contains_term(["intern", "new grad", "entry", "junior", "rotational"], term) == True:
+        if _contains_term(early_mid_def, term) == True:
             seniority_score -= 1.0
-        if _contains_term(["internship", "graduate"], term) == True:
+        if _contains_term(entry_def, term) == True:
             seniority_score -= 2.0
         
     if seniority_score >=2:
@@ -73,6 +77,7 @@ def rank_jobs_for_student(
         matches,
         key=lambda match: (
             match.score[0],
+            match.score[1],
             match.job.posted_date is not None,
             match.job.posted_date,
             match.job.company,

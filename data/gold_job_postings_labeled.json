@@ -1,0 +1,230 @@
+[
+  {
+    "id": "gold-001",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/shopback-2/829b4802-b364-49e5-81df-2324f4b0c254",
+    "retrieved_date": "2026-06-09",
+    "title": "Data Analyst (Internship) (H2 2026)",
+    "company": "ShopBack",
+    "location": "Singapore, Singapore",
+    "posting_summary": "Internship supporting business decisions, metrics ownership, reporting, dashboards, stakeholder analytics, and SQL-based analysis for a consumer rewards platform.",
+    "manual_labels": {
+      "primary_role": "Data Analyst / BI Engineer",
+      "role_fit": "strong",
+      "concentration": "Data Analytics and AI",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Strong MSIS analytics fit because the work centers on SQL, dashboards, business metrics, and stakeholder decision support."
+  },
+  {
+    "id": "gold-002",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/360learning/05faab18-e332-4d1e-a09c-42e2b0642f04",
+    "retrieved_date": "2026-06-09",
+    "title": "Data Analyst (6-month internship)",
+    "company": "360Learning",
+    "location": "Paris, Remote",
+    "posting_summary": "Six-month internship answering product and business questions with Snowflake, Looker, dbt, BI onboarding, self-service analytics, and AI-assisted SQL initiatives.",
+    "manual_labels": {
+      "primary_role": "Data Analyst / BI Engineer",
+      "role_fit": "strong",
+      "concentration": "Data Analytics and AI",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Excellent analytics test case with BI tooling, SQL, product analytics, and AI/data platform exposure."
+  },
+  {
+    "id": "gold-003",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/voltus/d30b5349-1023-497f-a5e5-264204071235",
+    "retrieved_date": "2026-06-09",
+    "title": "Residential Data Analyst Intern",
+    "company": "Voltus",
+    "location": "Remote",
+    "posting_summary": "Intern role consolidating partner API, portal, and internal database data into dashboards and enrollment funnel analysis for virtual power plant programs.",
+    "manual_labels": {
+      "primary_role": "Data Analyst / BI Engineer",
+      "role_fit": "strong",
+      "concentration": "Data Analytics and AI",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Strong fit for students targeting analytics roles because it combines SQL, Python, data joins, and operational dashboards."
+  },
+  {
+    "id": "gold-004",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/quantummetric/6db96991-e07b-4fe4-aee0-67dc9059195f",
+    "retrieved_date": "2026-06-09",
+    "title": "Security Engineering & Operations Intern - Spring 2026",
+    "company": "Quantum Metric",
+    "location": "Remote",
+    "posting_summary": "Security internship supporting vulnerability management, incident response workflows, SIEM detection tuning, cloud security analysis, AI security governance, and documentation.",
+    "manual_labels": {
+      "primary_role": "Cybersecurity Analyst",
+      "role_fit": "strong",
+      "concentration": "Cybersecurity",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "High-value cybersecurity gold example because the responsibilities include SIEM, incident response, vulnerability management, and security operations."
+  },
+  {
+    "id": "gold-005",
+    "source": "greenhouse",
+    "source_url": "https://boards.greenhouse.io/embed/job_app?token=8069279002",
+    "retrieved_date": "2026-06-09",
+    "title": "Cybersecurity Analyst",
+    "company": "Jane Street",
+    "location": "New York, NY",
+    "posting_summary": "Internship-style cybersecurity analyst program for students interested in security and technology, pairing interns with mentors on real security projects.",
+    "manual_labels": {
+      "primary_role": "Cybersecurity Analyst",
+      "role_fit": "strong",
+      "concentration": "Cybersecurity",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Strong security role fit and student-friendly seniority; useful even though the public posting summary is less tool-specific."
+  },
+  {
+    "id": "gold-006",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/aqueduct-tech/b3141f17-4635-43fb-8a91-fd5e3f455b0c",
+    "retrieved_date": "2026-06-09",
+    "title": "GRC Analyst",
+    "company": "Aqueduct Technologies",
+    "location": "Hybrid, Canton MA",
+    "posting_summary": "Client-facing GRC analyst role supporting compliance assessments, risk findings, control gap analysis, audit readiness, vendor risk, and frameworks such as NIST, ISO 27001, SOC 2, HIPAA, PCI DSS, and CMMC.",
+    "manual_labels": {
+      "primary_role": "IT Consultant / Tech Risk",
+      "role_fit": "strong",
+      "concentration": "Cybersecurity",
+      "concentration_fit": "strong",
+      "seniority": "mid_level",
+      "relevance": "medium"
+    },
+    "annotator_notes": "Strong content fit for tech risk and cyber GRC, but lower student relevance because it asks for several years of experience."
+  },
+  {
+    "id": "gold-007",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/Sprinto/5ca9c4c1-bb50-4d94-bbb1-242c9a4358e8",
+    "retrieved_date": "2026-06-09",
+    "title": "Information Security Compliance Intern",
+    "company": "Sprinto",
+    "location": "Bengaluru, Remote",
+    "posting_summary": "Intern role in an AI-native GRC platform with hands-on exposure to SOC 2, ISO 27001, audit partner lifecycle management, compliance automation, and security risk work.",
+    "manual_labels": {
+      "primary_role": "IT Consultant / Tech Risk",
+      "role_fit": "strong",
+      "concentration": "Cybersecurity",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Good intern-level tech risk example combining compliance frameworks, information security, GRC, and AI-enabled compliance tooling."
+  },
+  {
+    "id": "gold-008",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/weride/0a729794-dec6-4da1-996e-bef4e991a76d",
+    "retrieved_date": "2026-06-09",
+    "title": "2026 Technical Product Manager Intern",
+    "company": "WeRide.ai",
+    "location": "San Jose, CA",
+    "posting_summary": "Technical product management internship supporting autonomous driving product strategy, project intake and approval, roadmap alignment, validation strategy, PRD drafting, and resource allocation models.",
+    "manual_labels": {
+      "primary_role": "Product / Project Manager",
+      "role_fit": "strong",
+      "concentration": "Digital Transformation with AI",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Strong product/project fit with AI systems context, roadmap work, PRDs, and cross-functional engineering prioritization."
+  },
+  {
+    "id": "gold-009",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/shopback-2/8dbcb810-cf5f-4306-a049-d8ecbadb3eeb",
+    "retrieved_date": "2026-06-09",
+    "title": "Product Management Intern",
+    "company": "ShopBack",
+    "location": "Singapore, Singapore",
+    "posting_summary": "Product management internship working with senior product managers and commercial, marketing, operations, and engineering stakeholders on product analysis, design, documentation, rollout, optimization, KPIs, and business cases.",
+    "manual_labels": {
+      "primary_role": "Product / Project Manager",
+      "role_fit": "strong",
+      "concentration": "Digital Transformation with AI",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Clear PM internship fit for MSIS students interested in product analytics and cross-functional digital product execution."
+  },
+  {
+    "id": "gold-010",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/prosper/08d2e972-b83a-4796-8c4e-5263481aaf5b",
+    "retrieved_date": "2026-06-09",
+    "title": "AI Engineering Intern, Summer 2026",
+    "company": "Prosper",
+    "location": "San Francisco, CA",
+    "posting_summary": "Engineering internship building LLM-enabled orchestration systems, MCP server connectivity, internal and customer-facing tools, and AI-driven software experiences.",
+    "manual_labels": {
+      "primary_role": "Software Engineer",
+      "role_fit": "strong",
+      "concentration": "Digital Transformation with AI",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "high"
+    },
+    "annotator_notes": "Strong software engineering fit with meaningful AI implementation signals and modern systems integration work."
+  },
+  {
+    "id": "gold-011",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/aisafety/e011814b-9a80-43d6-bb0c-cc153ea4bec4",
+    "retrieved_date": "2026-06-09",
+    "title": "Research Engineer Intern (Fall 2026)",
+    "company": "Center for AI Safety",
+    "location": "San Francisco, CA",
+    "posting_summary": "Research engineering internship working with researchers on AI security, machine ethics, AI alignment, AI risk benchmarking, experiments, code review, publications, and large language model evaluation.",
+    "manual_labels": {
+      "primary_role": "Other",
+      "role_fit": "moderate",
+      "concentration": "Information Systems Research in AI",
+      "concentration_fit": "strong",
+      "seniority": "internship",
+      "relevance": "medium"
+    },
+    "annotator_notes": "Excellent AI research concentration example, but role taxonomy fit is only moderate because the target role list does not include research engineer."
+  },
+  {
+    "id": "gold-012",
+    "source": "lever",
+    "source_url": "https://jobs.lever.co/quantummetric/a77c2f19-6e54-47ca-8921-53dd6898fb57",
+    "retrieved_date": "2026-06-09",
+    "title": "Customer Success Strategy Intern - Spring 2026",
+    "company": "Quantum Metric",
+    "location": "Remote",
+    "posting_summary": "Customer success internship centered on SaaS customer experience, community, events, coaching, and administrative support rather than technical analytics, security, product, or software delivery.",
+    "manual_labels": {
+      "primary_role": "Other",
+      "role_fit": "weak",
+      "concentration": "Digital Transformation with AI",
+      "concentration_fit": "weak",
+      "seniority": "internship",
+      "relevance": "low"
+    },
+    "annotator_notes": "Included as a negative/low-relevance control example for ranking and classifier evaluation."
+  }
+]

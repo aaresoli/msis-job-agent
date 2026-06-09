@@ -28,7 +28,8 @@ build/
 dist/
 
 # Local data and logs
-data/
+data/*
+!data/gold_job_postings_labeled.json
 logs/
 *.log
 

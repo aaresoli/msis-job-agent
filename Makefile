@@ -1,16 +1,16 @@
 .PHONY: install test lint format
 
 install:
-	pip install -r requirements-dev.txt
+	python -m pip install -e ".[dev]"
 
 test:
-	pytest
+	python -m pytest
 
 lint:
-	ruff check src tests
-	mypy src
+	python -m ruff check .
+	python -m mypy src
 
 format:
-	black src tests
-	ruff check --fix src tests
+	python -m black .
+	python -m ruff check --fix .
 

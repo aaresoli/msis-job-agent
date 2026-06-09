@@ -3,6 +3,13 @@
 from hope_job_agent.models.job import JobPosting
 
 
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 def normalize_job(job: JobPosting) -> JobPosting:
     """Return a normalized job.
 
@@ -16,5 +23,7 @@ def normalize_job(job: JobPosting) -> JobPosting:
             "company": job.company.strip(),
             "location": job.location.strip(),
             "description": job.description.strip(),
+            "employment_type": _normalize_optional_text(job.employment_type),
+            "seniority": _normalize_optional_text(job.seniority),
         }
     )

@@ -8,6 +8,14 @@ from hope_job_agent.sources.base import BaseJobSource
 from hope_job_agent.sources.employer_careers import EmployerCareersSource
 from hope_job_agent.sources.handshake import HandshakeSource
 from hope_job_agent.sources.linkedin_reference import LinkedInReferenceSource
+from hope_job_agent.sources.registry import (
+    SOURCE_REGISTRY,
+    SourceComplianceError,
+    SourceMetadata,
+    SourceStatus,
+    ensure_source_allowed,
+    get_source_metadata,
+)
 
 __all__ = [
     "ApprovedJsonJobSource",
@@ -16,4 +24,10 @@ __all__ = [
     "EmployerCareersSource",
     "HandshakeSource",
     "LinkedInReferenceSource",
+    "SOURCE_REGISTRY",
+    "SourceComplianceError",
+    "SourceMetadata",
+    "SourceStatus",
+    "ensure_source_allowed",
+    "get_source_metadata",
 ]

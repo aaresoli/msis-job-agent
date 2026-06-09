@@ -1,16 +1,19 @@
 # Data Flow
 
-Planned high-level flow:
+Implemented local v0 flow:
 
-1. Approved source adapter fetches raw job records.
-2. Ingestion collects records from one or more adapters.
-3. Normalization converts records into `JobPosting`.
-4. Validation checks required fields and policy constraints.
-5. Deduplication removes repeated jobs, initially by URL.
-6. Classification assigns concentration and role tags.
-7. Ranking scores jobs for student profiles.
-8. Agents prepare student matches or GCS summaries.
-9. Delivery formats digest output.
+1. Source registry verifies each source is approved to run.
+2. Approved source adapter fetches local fixture/export job records.
+3. Ingestion collects records from one or more adapters.
+4. Normalization converts records into `JobPosting`.
+5. Validation checks required fields and policy constraints.
+6. Classification assigns role and concentration tags.
+7. Deduplication removes repeated jobs by canonical URL or exact content match.
+8. Ranking scores jobs for sample/student profiles.
+9. Pipeline writes a local JSON report.
+10. GCS helpers summarize program-level trend fields separately from ranking.
+11. Evaluation reads labelled fixtures and reports classifier/ranking metrics.
 
-This starter repository only implements safe local placeholders for those steps.
+Restricted sources such as LinkedIn and Handshake remain non-runnable until
+official approval and compliant access methods exist.
 

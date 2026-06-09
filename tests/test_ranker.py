@@ -37,3 +37,37 @@ def test_ranking_gives_higher_score_to_more_relevant_jobs():
     ranked = rank_jobs_for_student(student, [less_relevant_job, relevant_job])
 
     assert ranked[0].job.title == "Data Analyst Intern"
+    assert isinstance(ranked[0].score, float)
+    assert ranked[0].metadata["seniority"] == "Entry"
+
+
+def test_ranking_rewards_cpt_opt_friendly_jobs_for_international_profiles():
+    student = StudentProfile(
+        name="International Student",
+        concentration="Data Analytics and AI",
+        academic_stage="Incoming student (Fall)",
+        target_roles=["Data Analyst / BI Engineer"],
+        skills=["SQL"],
+        work_auth_status="Need CPT / OPT sponsorship",
+    )
+    friendly_job = JobPosting(
+        source="employer_careers",
+        title="Data Analyst Intern",
+        company="Example Analytics",
+        location="Bloomington, IN",
+        description="Work with SQL.",
+        url="https://example.com/jobs/friendly",
+        concentration_tags=["Data Analytics and AI"],
+        role_tags=["Data Analyst / BI Engineer"],
+        opt_cpt_flag=True,
+    )
+    unknown_job = friendly_job.model_copy(
+        update={
+            "url": "https://example.com/jobs/unknown",
+            "opt_cpt_flag": None,
+        }
+    )
+
+    ranked = rank_jobs_for_student(student, [unknown_job, friendly_job])
+
+    assert ranked[0].job.url == friendly_job.url

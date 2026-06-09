@@ -43,14 +43,17 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
     if student.concentration in job.concentration_tags:
         score += 1.0
 
-    for term in searchable_text:
-        if _contains_term(senior_def, term) == True:
+    for word in senior_def:
+        if _contains_term(searchable_text, word):
             seniority_score += 2.0
-        if _contains_term(mid_def, term) == True:
+    for word in mid_def:
+        if _contains_term(searchable_text, word):
             seniority_score += 1.0
-        if _contains_term(early_mid_def, term) == True:
+    for word in early_mid_def:
+        if _contains_term(searchable_text, word):
             seniority_score -= 1.0
-        if _contains_term(entry_def, term) == True:
+    for word in entry_def:
+        if _contains_term(searchable_text, word):
             seniority_score -= 2.0
         
     if seniority_score >=2:

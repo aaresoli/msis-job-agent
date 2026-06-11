@@ -4,7 +4,7 @@ from hope_job_agent.sources.base import BaseJobSource
 
 
 class FakeJobSource(BaseJobSource):
-    source_name = "fake_source"
+    source_name = "employer_careers"
 
     def __init__(self, jobs: list[JobPosting]) -> None:
         self._jobs = jobs
@@ -38,7 +38,16 @@ def test_run_pipeline_normalizes_validates_classifies_and_deduplicates():
         _job("https://example.com/jobs/1", title=" Data Analyst Intern "),
         _job("https://example.com/jobs/1/", title="Duplicate Data Analyst Intern"),
         _job("https://example.com/jobs/2", title=" Security Analyst Intern "),
-        _job("https://example.com/jobs/3", company=" "),
+        JobPosting.model_construct(
+            source="employer_careers",
+            title="Invalid Job",
+            company=" ",
+            location="Bloomington, IN",
+            description="Missing company after normalization.",
+            url="https://example.com/jobs/3",
+            concentration_tags=[],
+            role_tags=[],
+        ),
     ]
 
     result = run_pipeline([FakeJobSource(jobs)])
@@ -51,4 +60,8 @@ def test_run_pipeline_normalizes_validates_classifies_and_deduplicates():
     assert result.final_jobs[0].title == "Data Analyst Intern"
     assert result.final_jobs[0].location == "Bloomington, IN"
     assert result.final_jobs[0].description == "Analyze data with SQL and Python."
-    assert result.final_jobs[0].concentration_tags == ["Business Analytics"]
+    assert result.final_jobs[0].role_tags == ["Data Analyst / BI Engineer"]
+    assert result.final_jobs[0].concentration_tags == [
+        "Data Analytics and AI",
+        "Information Systems Research in AI",
+    ]

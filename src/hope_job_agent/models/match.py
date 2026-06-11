@@ -1,5 +1,7 @@
 """Models for representing job matches."""
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 from hope_job_agent.models.job import JobPosting
@@ -11,3 +13,4 @@ class JobMatch(BaseModel):
     job: JobPosting
     score: float
     reasons: list[str] = Field(default_factory=list)
+    metadata: dict[str, Any] = Field(default_factory=dict)

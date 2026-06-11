@@ -18,6 +18,8 @@ The project must use only approved and compliant data access methods.
 - Document the approved access method.
 - Avoid storing credentials in the repository.
 - Add tests that use mock data, not live restricted systems.
+- Add the source to `hope_job_agent.sources.registry` with an approval status.
+- Ensure the pipeline refuses restricted or disabled sources by default.
 
 ## LinkedIn
 
@@ -26,4 +28,11 @@ LinkedIn access must use approved and compliant methods only. This repository in
 ## Handshake
 
 Handshake access requires official access/API approval before implementation. This repository includes only a placeholder stub.
+
+## Current Registry
+
+- `approved_json`: approved local export fixture.
+- `employer_careers`: approved realistic local fixture.
+- `handshake`: restricted; blocked at runtime.
+- `linkedin_reference`: manual reference only; blocked at runtime.
 

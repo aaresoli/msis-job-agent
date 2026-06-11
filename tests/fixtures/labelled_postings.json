@@ -1,0 +1,101 @@
+{
+  "description": "Realistic labelled fixture for Sprint 3 readiness. These are not scraped job postings.",
+  "postings": [
+    {
+      "id": "job-data-analyst-1",
+      "title": "Data Analyst Intern",
+      "company": "Northstar Retail Group",
+      "location": "Indianapolis, IN",
+      "description": "Build SQL dashboards in Tableau and Power BI to analyze customer operations and business performance.",
+      "source": "employer_careers",
+      "source_url": "https://careers.example.com/northstar/data-analyst-intern",
+      "retrieval_date": "2026-06-05",
+      "posted_date": "2026-06-01",
+      "employment_type": "Internship",
+      "opt_cpt_flag": true,
+      "expected_role_tags": ["Data Analyst / BI Engineer"],
+      "expected_concentration_tags": ["Data Analytics and AI", "Information Systems Research in AI"],
+      "expected_seniority": "Entry",
+      "expected_relevance": 3
+    },
+    {
+      "id": "job-cyber-risk-1",
+      "title": "Cybersecurity Risk Intern",
+      "company": "Summit Financial Services",
+      "location": "Chicago, IL",
+      "description": "Support NIST control reviews, SIEM monitoring, vulnerability reporting, GRC documentation, and security risk analysis.",
+      "source": "employer_careers",
+      "source_url": "https://careers.example.com/summit/cybersecurity-risk-intern",
+      "retrieval_date": "2026-06-05",
+      "posted_date": "2026-05-29",
+      "employment_type": "Internship",
+      "opt_cpt_flag": true,
+      "expected_role_tags": ["Cybersecurity Analyst"],
+      "expected_concentration_tags": ["Cybersecurity"],
+      "expected_seniority": "Entry",
+      "expected_relevance": 3
+    },
+    {
+      "id": "job-transformation-1",
+      "title": "Digital Transformation Analyst",
+      "company": "Horizon Logistics",
+      "location": "Louisville, KY",
+      "description": "Evaluate digital transformation workflows, cloud automation, agile delivery, and enterprise process improvement opportunities.",
+      "source": "employer_careers",
+      "source_url": "https://careers.example.com/horizon/digital-transformation-analyst",
+      "retrieval_date": "2026-06-05",
+      "posted_date": "2026-05-28",
+      "employment_type": "Full-time",
+      "opt_cpt_flag": true,
+      "expected_role_tags": ["Product / Project Manager"],
+      "expected_concentration_tags": ["Digital Transformation with AI"],
+      "expected_seniority": "Early/Mid",
+      "expected_relevance": 2
+    },
+    {
+      "id": "job-research-ai-1",
+      "title": "AI Research Analyst",
+      "company": "Beacon Advisory Partners",
+      "location": "Boston, MA",
+      "description": "Conduct AI research, NLP experiments, literature review, statistical modeling, and machine learning analysis for client studies.",
+      "source": "approved_json",
+      "source_url": "https://careers.example.com/beacon/ai-research-analyst",
+      "retrieval_date": "2026-06-05",
+      "posted_date": "2026-05-25",
+      "employment_type": "Full-time",
+      "opt_cpt_flag": null,
+      "expected_role_tags": ["Data Analyst / BI Engineer"],
+      "expected_concentration_tags": ["Data Analytics and AI", "Information Systems Research in AI"],
+      "expected_seniority": "Early/Mid",
+      "expected_relevance": 2
+    }
+  ],
+  "sample_profiles": [
+    {
+      "profile": {
+        "name": "Data Analytics Fixture Student",
+        "concentration": "Data Analytics and AI",
+        "academic_stage": "Incoming student (Fall)",
+        "target_roles": ["Data Analyst / BI Engineer"],
+        "skills": ["SQL", "Tableau", "Power BI"],
+        "work_auth_status": "Need CPT / OPT sponsorship",
+        "geo_preference": ["Midwest (Chicago, Indy, Cincy)"],
+        "delivery_preference": "Dashboard / spreadsheet view"
+      },
+      "expected_top_job_ids": ["job-data-analyst-1"]
+    },
+    {
+      "profile": {
+        "name": "Cybersecurity Fixture Student",
+        "concentration": "Cybersecurity",
+        "academic_stage": "Incoming student (Fall)",
+        "target_roles": ["Cybersecurity Analyst"],
+        "skills": ["NIST", "SIEM", "GRC"],
+        "work_auth_status": "U.S. Citizen / Green Card",
+        "geo_preference": ["Midwest (Chicago, Indy, Cincy)"],
+        "delivery_preference": "Daily or weekly email"
+      },
+      "expected_top_job_ids": ["job-cyber-risk-1"]
+    }
+  ]
+}

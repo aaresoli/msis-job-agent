@@ -6,18 +6,19 @@ This project will eventually support approved job source adapters, shared ingest
 
 ## Current Status
 
-This repository is a base scaffold only. It does not implement the full product yet, does not connect to a database, and does not perform live job collection from restricted or unapproved sources.
+This repository is a Sprint 3-ready local baseline. It does not connect to a
+database or perform live job collection from restricted or unapproved sources.
 
 The current code provides:
 
 - Package structure for a FastAPI-ready Python backend
-- Safe source adapter interfaces and placeholder stubs
+- Safe source adapter interfaces and registry guardrails
 - A compliant local JSON approved-source adapter for v0 ingestion demos
 - A thin-slice CLI runner for ingestion, normalization, validation,
-  classification, and deduplication
-- Simple model, normalization, deduplication, ranking, and digest helpers
-- Documentation placeholders for architecture, compliance, and handoff
-- pytest-based starter tests
+  classification, deduplication, ranking, and JSON output
+- Normalized job/student schemas, deterministic ranking, and GCS summaries
+- A realistic labelled fixture and evaluation command
+- pytest, Ruff, Black, mypy, and GitHub Actions checks
 
 ## Compliance Notice
 
@@ -31,8 +32,11 @@ Use Python 3.11 or newer.
 
 ```bash
 python -m venv .venv
+# macOS/Linux:
 source .venv/bin/activate
-pip install -r requirements-dev.txt
+# Windows PowerShell:
+# .\.venv\Scripts\Activate.ps1
+python -m pip install -e ".[dev]"
 ```
 
 Create a local environment file only if needed:
@@ -46,7 +50,7 @@ Never commit real secrets.
 ## Run Tests
 
 ```bash
-pytest
+python -m pytest
 ```
 
 ## Run The V0 Pipeline
@@ -58,13 +62,28 @@ scraping or connect to restricted job platforms.
 hope-job-agent run-pipeline --source-file docs/examples/approved_jobs.sample.json
 ```
 
+The default report is written to `data/output/pipeline_results.json`.
+
+You can also run the module directly:
+
+```bash
+python -m hope_job_agent.cli run-pipeline --source-file docs/examples/approved_jobs.sample.json
+```
+
+## Run Evaluation
+
+```bash
+hope-job-agent evaluate --dataset-file tests/fixtures/labelled_postings.json
+```
+
 ## Developer Commands
 
 ```bash
 make install
 make test
 make lint
-make format
+python -m black --check .
+python -m mypy src
 ```
 
 ## Team Workflow
@@ -92,4 +111,10 @@ Examples:
 - `docs/`: architecture, compliance, source approval, and handoff notes
 - `src/hope_job_agent/`: application package
 - `tests/`: starter pytest suite
+
+## Sprint 3 Assumption
+
+The project brief references all 5 concentration tracks, while the current
+validated schema contains 4 tracks. Keep the 4-track schema until the advisor
+confirms the official fifth track name.
 

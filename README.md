@@ -16,6 +16,8 @@ The current code provides:
 - A compliant local JSON approved-source adapter for v0 ingestion demos
 - A thin-slice CLI runner for ingestion, normalization, validation,
   classification, deduplication, ranking, and JSON output
+- An MVP local pipeline runner that exports ranked per-student CSV/JSON results
+  and a run summary
 - Normalized job/student schemas, deterministic ranking, and GCS summaries
 - A realistic labelled fixture and evaluation command
 - pytest, Ruff, Black, mypy, and GitHub Actions checks
@@ -70,6 +72,19 @@ You can also run the module directly:
 python -m hope_job_agent.cli run-pipeline --source-file docs/examples/approved_jobs.sample.json
 ```
 
+## Run The MVP Pipeline
+
+The MSI-21 MVP runner composes the approved local JSON adapter, normalization,
+deduplication, classification, ranking, export, and summary steps.
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source approved_json --input data/sample_jobs.json --profiles data/sample_profiles.json --output outputs/mvp_results.csv
+```
+
+It writes `outputs/mvp_results.csv` plus
+`outputs/mvp_results.summary.json`. See `docs/mvp_pipeline.md` for the input
+format, output fields, flags, and current limitations.
+
 ## Run Evaluation
 
 ```bash
@@ -109,6 +124,7 @@ Examples:
 ## Repository Layout
 
 - `docs/`: architecture, compliance, source approval, and handoff notes
+- `data/`: checked-in local sample inputs for the MVP runner
 - `src/hope_job_agent/`: application package
 - `tests/`: starter pytest suite
 

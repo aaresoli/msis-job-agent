@@ -12,6 +12,7 @@ class JobPosting(BaseModel):
     """Normalized job posting from an approved source."""
 
     source: str = Field(min_length=1)
+    source_job_id: str | None = None
     title: str = Field(min_length=1)
     company: str = Field(min_length=1)
     location: str = Field(min_length=1)

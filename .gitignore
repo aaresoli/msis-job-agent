@@ -28,7 +28,11 @@ build/
 dist/
 
 # Local data and logs
-data/
+data/*
+!data/.gitkeep
+!data/sample_jobs.json
+!data/sample_profiles.json
+outputs/
 logs/
 *.log
 

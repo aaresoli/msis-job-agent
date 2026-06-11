@@ -1,0 +1,37 @@
+{
+  "profiles": [
+    {
+      "student_id": "msis-001",
+      "name": "Priya Sharma",
+      "concentration": "Data Analytics and AI",
+      "academic_stage": "Returning / finishing up",
+      "target_roles": ["Data Analyst / BI Engineer", "Product / Project Manager"],
+      "skills": ["Python", "SQL", "Tableau", "Power BI", "Excel"],
+      "work_auth_status": "U.S. Citizen / Green Card",
+      "geo_preference": ["Midwest (Chicago, Indy, Cincy)", "East Coast (NYC, Boston, DC)"],
+      "remote_preference": "Hybrid is fine",
+      "delivery_preference": "Dashboard / spreadsheet view",
+      "match_frequency": "Once a day",
+      "ai_matching_consent": true,
+      "profile_version": 1,
+      "updated_at": "2026-05-15T10:00:00Z"
+    },
+    {
+      "student_id": "msis-002",
+      "name": "Jordan Hayes",
+      "concentration": "Cybersecurity",
+      "academic_stage": "Incoming student (Fall)",
+      "target_roles": ["Cybersecurity Analyst", "IT Consultant / Tech Risk"],
+      "skills": ["SIEM", "NIST", "Python", "Risk Management", "Splunk"],
+      "work_auth_status": "Need CPT / OPT sponsorship",
+      "opt_eligibility_date": "2026-08-15",
+      "geo_preference": ["East Coast (NYC, Boston, DC)", "Midwest (Chicago, Indy, Cincy)"],
+      "remote_preference": "On-site is fine",
+      "delivery_preference": "Daily or weekly email",
+      "match_frequency": "Once a day",
+      "ai_matching_consent": true,
+      "profile_version": 1,
+      "updated_at": "2026-05-22T14:30:00Z"
+    }
+  ]
+}

@@ -28,20 +28,23 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
     mid_def = ["senior", "experienced", "proficient", "seasoned"]
     early_mid_def = ["intern", "new grad", "entry", "junior", "rotational", "novice"]
     entry_def = ["internship", "graduate", "trainee"]
+    skill_score = 0.0
+    role_score = 0.0
+    concentration_score = 0.0
     seniority_score = 0.0
     seniority_label = ""
     score = 0.0
 
     for skill in _normalize_terms(student.skills):
         if _contains_term(searchable_text, skill):
-            score += 2.0
+            skill_score += 1.0
 
     for role in _normalize_terms(student.target_roles):
         if _contains_term(searchable_text, role):
-            score += 3.0
+            role_score += 1.0
 
     if student.concentration in job.concentration_tags:
-        score += 1.0
+        concentration_score += 1.0
 
     for word in senior_def:
         if _contains_term(searchable_text, word):
@@ -65,7 +68,7 @@ def score_job_for_student(student: StudentProfile, job: JobPosting) -> float:
     elif seniority_score <= -1:
         seniority_label = "Entry"
         
-    return score, seniority_label
+    return skill_score, role_score, concentration_score, seniority_score
 
 
 def rank_jobs_for_student(
@@ -81,6 +84,8 @@ def rank_jobs_for_student(
         key=lambda match: (
             match.score[0],
             match.score[1],
+            match.score[2],
+            match.score[3],
             match.job.posted_date is not None,
             match.job.posted_date,
             match.job.company,

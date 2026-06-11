@@ -14,6 +14,7 @@ The current code provides:
 - Package structure for a FastAPI-ready Python backend
 - Safe source adapter interfaces and registry guardrails
 - A compliant local JSON approved-source adapter for v0 ingestion demos
+- A KSBIT-compatible local JSON/CSV export adapter for approved exports
 - A thin-slice CLI runner for ingestion, normalization, validation,
   classification, deduplication, ranking, and JSON output
 - An MVP local pipeline runner that exports ranked per-student CSV/JSON results
@@ -84,6 +85,21 @@ python -m hope_job_agent.pipeline.run_mvp --source approved_json --input data/sa
 It writes `outputs/mvp_results.csv` plus
 `outputs/mvp_results.summary.json`. See `docs/mvp_pipeline.md` for the input
 format, output fields, flags, and current limitations.
+
+Run the MVP pipeline with a KSBIT-compatible local export:
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.json --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results.csv
+```
+
+CSV exports are supported too:
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.csv --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results_csv.csv
+```
+
+See `docs/ksbit_export_adapter.md` for supported formats, alias mappings,
+source-level filtering, and the future API integration path.
 
 ## Run Evaluation
 

@@ -7,6 +7,10 @@ from hope_job_agent.sources.approved_json import (
 from hope_job_agent.sources.base import BaseJobSource
 from hope_job_agent.sources.employer_careers import EmployerCareersSource
 from hope_job_agent.sources.handshake import HandshakeSource
+from hope_job_agent.sources.ksbit_export import (
+    KsbitExportSource,
+    KsbitExportSourceError,
+)
 from hope_job_agent.sources.linkedin_reference import LinkedInReferenceSource
 from hope_job_agent.sources.registry import (
     SOURCE_REGISTRY,
@@ -23,6 +27,8 @@ __all__ = [
     "BaseJobSource",
     "EmployerCareersSource",
     "HandshakeSource",
+    "KsbitExportSource",
+    "KsbitExportSourceError",
     "LinkedInReferenceSource",
     "SOURCE_REGISTRY",
     "SourceComplianceError",

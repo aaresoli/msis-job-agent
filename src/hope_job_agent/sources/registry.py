@@ -49,6 +49,15 @@ SOURCE_REGISTRY: dict[str, SourceMetadata] = {
         priority=2,
         notes="Prototype source shape for future ATS/API integrations.",
     ),
+    "ksbit_export": SourceMetadata(
+        name="ksbit_export",
+        display_name="KSBIT Local Export",
+        status=SourceStatus.APPROVED,
+        source_type="local_export",
+        access_method="Approved local JSON/CSV export only; no live collection.",
+        priority=3,
+        notes="KSBIT-compatible adapter for local exports and future API swap-in.",
+    ),
     "handshake": SourceMetadata(
         name="handshake",
         display_name="Handshake",

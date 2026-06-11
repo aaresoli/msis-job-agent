@@ -31,6 +31,10 @@ from hope_job_agent.sources.approved_json import (
     ApprovedJsonSourceError,
 )
 from hope_job_agent.sources.base import BaseJobSource
+from hope_job_agent.sources.ksbit_export import (
+    KsbitExportSource,
+    KsbitExportSourceError,
+)
 from hope_job_agent.sources.registry import SourceComplianceError, ensure_source_allowed
 from hope_job_agent.utils.hashing import stable_hash
 from hope_job_agent.utils.logging import configure_logging
@@ -87,6 +91,8 @@ def run_mvp_pipeline(
     profiles_path: Path,
     output_path: Path,
     limit: int | None = None,
+    source_since_date: str | None = None,
+    source_limit: int | None = None,
     dry_run: bool = False,
     verbose: bool = False,
 ) -> MvpPipelineResult:
@@ -101,7 +107,12 @@ def run_mvp_pipeline(
     if limit is not None and limit < 1:
         raise MvpPipelineError("--limit must be a positive integer")
 
-    source_load = _load_source(source_name=source_name, input_path=input_path)
+    source_load = _load_source(
+        source_name=source_name,
+        input_path=input_path,
+        source_since_date=source_since_date,
+        source_limit=source_limit,
+    )
     warnings.extend(source_load.warnings)
     _log_warnings(source_load.warnings)
 
@@ -148,6 +159,8 @@ def run_mvp_pipeline(
         "run_id": str(uuid4()),
         "timestamp": datetime.now(UTC).isoformat(),
         "source": source_name,
+        "source_since_date": source_since_date,
+        "source_limit": source_limit,
         "input_path": str(input_path),
         "profiles_path": str(profiles_path),
         "output_path": str(output_path),
@@ -178,7 +191,12 @@ def run_mvp_pipeline(
     )
 
 
-def _load_source(source_name: str, input_path: Path) -> SourceLoadResult:
+def _load_source(
+    source_name: str,
+    input_path: Path,
+    source_since_date: str | None = None,
+    source_limit: int | None = None,
+) -> SourceLoadResult:
     """Load jobs from an approved local source adapter."""
 
     _require_file(input_path, "Input file")
@@ -187,23 +205,44 @@ def _load_source(source_name: str, input_path: Path) -> SourceLoadResult:
     except SourceComplianceError as exc:
         raise MvpPipelineError(str(exc)) from exc
 
-    if source_name != "approved_json":
-        raise MvpPipelineError(
-            "MVP runner v1 currently supports --source approved_json only"
+    LOGGER.info("Loading source adapter: %s", source_name)
+    if source_name == "approved_json":
+        if source_since_date is not None or source_limit is not None:
+            raise MvpPipelineError(
+                "--source-since-date and --source-limit are only supported for "
+                "ksbit_export"
+            )
+        approved_source = ApprovedJsonJobSource(input_path)
+        try:
+            approved_result = approved_source.fetch_jobs_with_warnings()
+        except ApprovedJsonSourceError as exc:
+            raise MvpPipelineError(str(exc)) from exc
+        return SourceLoadResult(
+            source=approved_source,
+            jobs=approved_result.jobs,
+            raw_count=approved_result.raw_count,
+            warnings=approved_result.warnings,
         )
 
-    LOGGER.info("Loading source adapter: %s", source_name)
-    source = ApprovedJsonJobSource(input_path)
-    try:
-        result = source.fetch_jobs_with_warnings()
-    except ApprovedJsonSourceError as exc:
-        raise MvpPipelineError(str(exc)) from exc
+    if source_name == "ksbit_export":
+        try:
+            ksbit_source = KsbitExportSource(
+                input_path,
+                since_date=source_since_date,
+                limit=source_limit,
+            )
+            ksbit_result = ksbit_source.fetch_jobs_with_warnings()
+        except KsbitExportSourceError as exc:
+            raise MvpPipelineError(str(exc)) from exc
+        return SourceLoadResult(
+            source=ksbit_source,
+            jobs=ksbit_result.jobs,
+            raw_count=ksbit_result.raw_count,
+            warnings=ksbit_result.warnings,
+        )
 
-    return SourceLoadResult(
-        source=source,
-        jobs=result.jobs,
-        raw_count=result.raw_count,
-        warnings=result.warnings,
+    raise MvpPipelineError(
+        "MVP runner v1 supports --source approved_json or --source ksbit_export"
     )
 
 
@@ -447,6 +486,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Maximum jobs to export per consenting student profile.",
     )
     parser.add_argument(
+        "--source-since-date",
+        default=None,
+        help="For ksbit_export, include records posted on or after YYYY-MM-DD.",
+    )
+    parser.add_argument(
+        "--source-limit",
+        type=int,
+        default=None,
+        help="For ksbit_export, maximum source records returned after filtering.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run all steps but skip writing result and summary files.",
@@ -472,6 +522,8 @@ def main(argv: Sequence[str] | None = None) -> None:
             profiles_path=args.profiles,
             output_path=args.output,
             limit=args.limit,
+            source_since_date=args.source_since_date,
+            source_limit=args.source_limit,
             dry_run=args.dry_run,
             verbose=args.verbose,
         )

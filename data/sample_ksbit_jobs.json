@@ -1,0 +1,86 @@
+{
+  "jobs": [
+    {
+      "source_job_id": "ksbit-001",
+      "title": "Business Analyst Intern",
+      "company": "Cardinal Analytics",
+      "location": "Indianapolis, IN",
+      "description": "Analyze operational data with SQL, Excel, Tableau, and stakeholder interviews.",
+      "apply_url": "https://example.com/ksbit/business-analyst-intern",
+      "posted_date": "2026-06-01",
+      "employment_type": "Internship",
+      "seniority_level": "Entry",
+      "concentration_tags": ["Business Analytics"],
+      "opt_cpt_flag": true
+    },
+    {
+      "job_id": "ksbit-002",
+      "job_title": "BI Reporting Analyst",
+      "employer_name": "Lakeview Retail Systems",
+      "work_location": "Chicago, IL",
+      "job_description": "Build Power BI dashboards, automate SQL reporting, and summarize customer trends.",
+      "job_url": "https://example.com/ksbit/bi-reporting-analyst",
+      "date_posted": "2026-06-03",
+      "job_type": "Full-time",
+      "experience_level": "Early/Mid",
+      "concentration_tags": ["Business Analytics"]
+    },
+    {
+      "posting_id": "ksbit-003",
+      "position_title": "Cybersecurity Risk Analyst",
+      "organization": "Summit Credit Union",
+      "office_location": "Bloomington, IN",
+      "full_description": "Support SIEM review, NIST control mapping, vulnerability triage, and security reporting.",
+      "application_url": "https://example.com/ksbit/cybersecurity-risk-analyst",
+      "published_at": "2026-06-04T09:30:00Z",
+      "position_type": "Internship",
+      "level": "Entry",
+      "concentration_tags": ["Cybersecurity"],
+      "opt_cpt_flag": true
+    },
+    {
+      "requisition_id": "ksbit-004",
+      "role": "Product Operations Consultant",
+      "company_name": "Northstar Advisory",
+      "city": "Cincinnati, OH",
+      "summary": "Partner with product managers, improve agile delivery, and document digital transformation workflows.",
+      "apply_link": "https://example.com/ksbit/product-operations-consultant",
+      "created_at": "2026-05-29",
+      "work_type": "Full-time",
+      "seniority": "Early/Mid",
+      "concentration_tags": ["Digital Transformation with AI"]
+    },
+    {
+      "req_id": "ksbit-005",
+      "name": "Data Engineering Intern",
+      "employer": "Horizon Health Data",
+      "job_location": "Remote",
+      "description": "Create Python data pipelines, model warehouse tables, and document analytics datasets.",
+      "post_url": "https://example.com/ksbit/data-engineering-intern",
+      "posted_date": "2026-06-02",
+      "employment_type": "Internship",
+      "seniority_level": "Entry",
+      "concentration_tags": ["Data Analytics and AI"],
+      "opt_cpt_flag": true
+    },
+    {
+      "id": "ksbit-006",
+      "title": "Campus Event Assistant",
+      "company": "Example Campus Services",
+      "description": "Set up event rooms, greet visitors, and coordinate front desk coverage.",
+      "url": "https://example.com/ksbit/campus-event-assistant"
+    },
+    {
+      "source_job_id": "ksbit-007",
+      "title": "Duplicate BI Reporting Analyst",
+      "company": "Lakeview Retail Systems",
+      "location": "Chicago, IL",
+      "description": "Build Power BI dashboards, automate SQL reporting, and summarize customer trends.",
+      "apply_url": "https://example.com/ksbit/bi-reporting-analyst?utm_source=demo",
+      "posted_date": "2026-06-03",
+      "employment_type": "Full-time",
+      "seniority_level": "Early/Mid",
+      "concentration_tags": ["Business Analytics"]
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+job_id,job_title,employer_name,work_location,job_description,job_url,date_posted,job_type,experience_level,concentration_tags,opt_cpt_flag
+ksbit-csv-001,Analytics Intern,Redbud Insights,"Bloomington, IN","Use SQL and Python to analyze student engagement data.","https://example.com/ksbit-csv/analytics-intern",2026-06-01,Internship,Entry,Business Analytics,true
+ksbit-csv-002,Cybersecurity Analyst Intern,Monroe Security Labs,"Indianapolis, IN","Review SIEM alerts, document NIST controls, and summarize risk findings.","https://example.com/ksbit-csv/cybersecurity-analyst-intern",2026-06-02,Internship,Entry,Cybersecurity,true
+ksbit-csv-003,Product Analyst,Hoosier Product Studio,"Chicago, IL","Support product managers, agile ceremonies, workflow analysis, and dashboard reporting.","https://example.com/ksbit-csv/product-analyst",2026-06-03,Full-time,Early/Mid,Digital Transformation with AI,false
+ksbit-csv-004,Data Engineering Associate,Sample Data Works,Remote,"Build Python pipelines, SQL transformations, and analytics-ready data models.","https://example.com/ksbit-csv/data-engineering-associate",2026-06-04,Full-time,Entry,Data Analytics and AI,true

@@ -1,7 +1,7 @@
 # MVP Pipeline Runner
 
 MSI-21 adds one local command that runs the MVP job pipeline end to end using
-the approved local JSON source adapter. It does not scrape websites, automate a
+approved local export source adapters. It does not scrape websites, automate a
 browser, access LinkedIn, log in to Handshake, or require credentials.
 
 ## Command
@@ -13,16 +13,27 @@ python -m hope_job_agent.pipeline.run_mvp --source approved_json --input data/sa
 Optional flags:
 
 - `--limit N`: export at most `N` ranked jobs per consenting student profile.
+- `--source-since-date YYYY-MM-DD`: for `ksbit_export`, include source records
+  posted on or after the given date. Records without parseable dates are
+  included with warnings.
+- `--source-limit N`: for `ksbit_export`, return at most `N` source records
+  after source filtering.
 - `--dry-run`: execute ingestion, normalization, deduplication, classification,
   and ranking without writing output files.
 - `--verbose`: enable debug logging.
+
+KSBIT-compatible local exports can use the same runner:
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.json --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results.csv
+```
 
 ## What It Does
 
 The runner composes the Sprint 2 modules in this order:
 
 1. Loads runtime config with `hope_job_agent.config.get_settings`.
-2. Checks the source registry and loads the `approved_json` local adapter.
+2. Checks the source registry and loads an approved local source adapter.
 3. Ingests raw jobs from the approved JSON export.
 4. Normalizes job fields with `pipeline.normalize.normalize_job`.
 5. Validates required job fields and warns on recoverable bad records.
@@ -36,7 +47,7 @@ The runner composes the Sprint 2 modules in this order:
 
 ## Input Format
 
-Job input must be an approved JSON export envelope:
+For `approved_json`, job input must be an approved JSON export envelope:
 
 ```json
 {
@@ -66,6 +77,10 @@ Each job needs title, company, location, description, and one of `url`,
 `apply_url`, or `post_url`. Optional fields include `source_job_id`,
 `posted_date`, `employment_type`, `seniority`, `role_tags`,
 `concentration_tags`, `opt_cpt_flag`, and `raw_metadata`.
+
+For `ksbit_export`, job input can be a JSON list, wrapped JSON object, or CSV.
+See `docs/ksbit_export_adapter.md` for supported wrappers, required fields, and
+alias mappings.
 
 Profiles can be a JSON array or an object with a `profiles` array. Each profile
 uses the `StudentProfile` model fields, including `student_id`, `name`,
@@ -100,7 +115,8 @@ and runtime seconds.
 
 ## Known Limitations
 
-- MVP v1 supports `--source approved_json` only.
+- MVP v1 supports approved local exports through `approved_json` and
+  `ksbit_export`.
 - Ranking is deterministic and rule-based; it does not call an LLM.
 - The classifier is deterministic and keyword-based.
 - Location preferences are captured in profiles but not yet scored.

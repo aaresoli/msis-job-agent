@@ -55,12 +55,12 @@ def explain_job_score(
     """Return an explainable score tuple for one student-job pair."""
 
     searchable_text = f"{job.title} {job.description}".lower()
-    score = 0.0
+    individual_scores = {"Skill Score": 0.0, "Role Score": 0.0, "Concentration_Score": 0.0, "OPT/CPT Score": 0.0, "Seniority Match Score": 0.0, "Seniority Mismatch Score": 0.0}
     reasons: list[str] = []
 
     for skill in _normalize_terms(student.skills):
         if _contains_term(searchable_text, skill):
-            score += weights.skill_match
+            individual_scores["Skill Score"] += weights.skill_match
             reasons.append(f"Skill match: {skill}")
 
     for role in _normalize_terms(student.target_roles):
@@ -68,26 +68,31 @@ def explain_job_score(
             tag.casefold() for tag in job.role_tags
         ]:
             score += weights.target_role_match
+            individual_scores["Role Score"] += weights.target_role_match
             reasons.append(f"Target role match: {role}")
 
     if student.concentration in job.concentration_tags:
         score += weights.concentration_match
+        individual_scores["Concentration Score"] += weights.concentration_match
         reasons.append(f"Concentration match: {student.concentration}")
 
     if student.needs_cpt_opt and job.opt_cpt_flag is True:
         score += weights.opt_cpt_match
+        individual_scores["OPT/CPT Score"] += weights.opt_cpt_match
         reasons.append("CPT/OPT-friendly signal")
 
     seniority_label = job.seniority or infer_seniority(job)
     preferred_seniority = _preferred_seniority(student)
     if preferred_seniority and seniority_label == preferred_seniority:
         score += weights.seniority_match
+        individual_scores["Seniority Match Score"] += weights.seniority_match
         reasons.append(f"Seniority match: {seniority_label}")
     elif preferred_seniority and seniority_label:
         score += weights.seniority_mismatch_penalty
+        individual_scores["Seniority Mismatch Score"] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
-    return score, reasons, {"seniority": seniority_label}
+    return score, individual_scores, reasons, {"seniority": seniority_label}
 
 
 def infer_seniority(job: JobPosting) -> str:

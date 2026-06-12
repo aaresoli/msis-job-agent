@@ -28,7 +28,13 @@ build/
 dist/
 
 # Local data and logs
-data/
+data/*
+!data/.gitkeep
+!data/sample_jobs.json
+!data/sample_profiles.json
+!data/sample_ksbit_jobs.csv
+!data/sample_ksbit_jobs.json
+outputs/
 logs/
 *.log
 

@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class StudentProfile(BaseModel):
     """Student profile fields consumed by v0 matching and ranking."""
 
+    student_id: str | None = None
     name: str = Field(min_length=1)
     concentration: str = Field(min_length=1)
     academic_stage: str | None = None

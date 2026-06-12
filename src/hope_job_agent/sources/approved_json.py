@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.sources.base import BaseJobSource
@@ -15,6 +23,15 @@ from hope_job_agent.sources.base import BaseJobSource
 
 class ApprovedJsonSourceError(ValueError):
     """Raised when an approved JSON export cannot be loaded safely."""
+
+
+@dataclass(frozen=True)
+class ApprovedJsonFetchResult:
+    """Jobs loaded from an approved export plus recoverable record warnings."""
+
+    jobs: list[JobPosting]
+    raw_count: int
+    warnings: list[str]
 
 
 class ApprovedSourceMetadata(BaseModel):
@@ -43,32 +60,57 @@ class ApprovedSourceMetadata(BaseModel):
 class ApprovedJsonJobRecord(BaseModel):
     """Raw job record from an approved JSON export."""
 
+    source_job_id: str | None = None
     title: str
     company: str
     location: str
     description: str
-    url: str
+    url: str | None = None
+    apply_url: str | None = None
+    post_url: str | None = None
     source: str | None = None
     posted_date: date | None = None
+    employment_type: str | None = None
+    seniority: str | None = None
     concentration_tags: list[str] = Field(default_factory=list)
+    role_tags: list[str] = Field(default_factory=list)
     opt_cpt_flag: bool | None = None
+    raw_metadata: dict[str, Any] = Field(default_factory=dict)
 
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="allow")
+
+    @model_validator(mode="after")
+    def require_url(self) -> ApprovedJsonJobRecord:
+        """Require one post/apply URL field for downstream ranking output."""
+
+        if not (self.url or self.apply_url or self.post_url):
+            raise ValueError("one of url, apply_url, or post_url is required")
+        return self
 
     def to_job_posting(self, default_source: str) -> JobPosting:
         """Convert an export record into the shared job posting model."""
 
         source = self.source.strip() if self.source and self.source.strip() else ""
+        metadata = dict(self.raw_metadata)
+        if self.source_job_id:
+            metadata["source_job_id"] = self.source_job_id
+        if self.model_extra:
+            metadata.update(self.model_extra)
         return JobPosting(
             source=source or default_source,
+            source_job_id=self.source_job_id,
             title=self.title,
             company=self.company,
             location=self.location,
             description=self.description,
-            url=self.url,
+            url=self.url or self.apply_url or self.post_url or "",
             posted_date=self.posted_date,
+            employment_type=self.employment_type,
+            seniority=self.seniority,
             concentration_tags=self.concentration_tags,
+            role_tags=self.role_tags,
             opt_cpt_flag=self.opt_cpt_flag,
+            raw_metadata=metadata,
         )
 
 
@@ -76,7 +118,7 @@ class ApprovedJsonExport(BaseModel):
     """Top-level approved JSON export envelope."""
 
     metadata: ApprovedSourceMetadata
-    jobs: list[ApprovedJsonJobRecord] = Field(default_factory=list)
+    jobs: list[Any] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="ignore")
 
@@ -94,12 +136,33 @@ class ApprovedJsonJobSource(BaseJobSource):
     def fetch_jobs(self) -> list[JobPosting]:
         """Fetch jobs from a local approved JSON export."""
 
+        return self.fetch_jobs_with_warnings().jobs
+
+    def fetch_jobs_with_warnings(self) -> ApprovedJsonFetchResult:
+        """Fetch jobs while skipping malformed individual records when possible."""
+
         export = self._load_export()
         self.source_name = export.metadata.source_name
-        return [
-            record.to_job_posting(default_source=export.metadata.source_name)
-            for record in export.jobs
-        ]
+        jobs: list[JobPosting] = []
+        warnings: list[str] = []
+
+        for index, raw_record in enumerate(export.jobs, start=1):
+            try:
+                record = ApprovedJsonJobRecord.model_validate(raw_record)
+                jobs.append(
+                    record.to_job_posting(default_source=export.metadata.source_name)
+                )
+            except ValidationError as exc:
+                warnings.append(
+                    "Skipped malformed job record "
+                    f"{index} in {self.export_path}: {_summarize_validation_error(exc)}"
+                )
+
+        return ApprovedJsonFetchResult(
+            jobs=jobs,
+            raw_count=len(export.jobs),
+            warnings=warnings,
+        )
 
     def health_check(self) -> bool:
         """Return whether the local export can be loaded and validated."""
@@ -142,3 +205,13 @@ class ApprovedJsonJobSource(BaseJobSource):
                 f"Approved JSON export is not valid JSON: "
                 f"{self.export_path}: {exc.msg}"
             ) from exc
+
+
+def _summarize_validation_error(exc: ValidationError) -> str:
+    errors = exc.errors()
+    if not errors:
+        return str(exc)
+    first_error = errors[0]
+    location = ".".join(str(part) for part in first_error.get("loc", ()))
+    message = first_error.get("msg", str(exc))
+    return f"{location}: {message}" if location else str(message)

@@ -55,11 +55,13 @@ def explain_job_score(
     """Return an explainable score tuple for one student-job pair."""
 
     searchable_text = f"{job.title} {job.description}".lower()
+    score = 0.0
     individual_scores = {"Skill Score": 0.0, "Role Score": 0.0, "Concentration_Score": 0.0, "OPT/CPT Score": 0.0, "Seniority Match Score": 0.0, "Seniority Mismatch Score": 0.0}
     reasons: list[str] = []
 
     for skill in _normalize_terms(student.skills):
         if _contains_term(searchable_text, skill):
+            score += weights.skill_match
             individual_scores["Skill Score"] += weights.skill_match
             reasons.append(f"Skill match: {skill}")
 

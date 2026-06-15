@@ -23,6 +23,9 @@ class JobPosting(BaseModel):
     seniority: str | None = None
     concentration_tags: list[str] = Field(default_factory=list)
     role_tags: list[str] = Field(default_factory=list)
+    role_confidence_scores: dict[str, float] = Field(default_factory=dict)
+    concentration_confidence_scores: dict[str, float] = Field(default_factory=dict)
+    classification_uncertain: bool = False
     opt_cpt_flag: bool | None = None
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
     retrieved_at: datetime | None = None

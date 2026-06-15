@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
 
-from hope_job_agent.classification.taxonomy import MSIS_CONCENTRATIONS, MSIS_TARGET_ROLES
-
+from hope_job_agent.classification.taxonomy import (
+    MSIS_CONCENTRATIONS,
+    MSIS_TARGET_ROLES,
+)
 
 DATASET_PATH = Path("data/gold_job_postings_labeled.json")
 

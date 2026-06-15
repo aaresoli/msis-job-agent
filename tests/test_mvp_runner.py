@@ -100,6 +100,7 @@ def test_mvp_cli_runs_end_to_end_deduplicates_and_limits_per_student(tmp_path, c
     jobs_path = tmp_path / "jobs.json"
     profiles_path = tmp_path / "profiles.json"
     output_path = tmp_path / "outputs" / "mvp_results.csv"
+    database_path = tmp_path / "mvp.sqlite3"
     duplicate = _data_job(url="https://example.com/jobs/data-analyst?utm_source=email")
     _write_jobs(jobs_path, [_data_job(), duplicate, _security_job()])
     _write_profiles(profiles_path)
@@ -116,6 +117,8 @@ def test_mvp_cli_runs_end_to_end_deduplicates_and_limits_per_student(tmp_path, c
             str(output_path),
             "--limit",
             "1",
+            "--database-url",
+            f"sqlite:///{database_path.as_posix()}",
         ]
     )
 
@@ -125,6 +128,7 @@ def test_mvp_cli_runs_end_to_end_deduplicates_and_limits_per_student(tmp_path, c
     assert "MVP pipeline run complete" in captured.out
     assert output_path.exists()
     assert summary_path.exists()
+    assert database_path.exists()
 
     with output_path.open(newline="", encoding="utf-8") as output_file:
         reader = csv.DictReader(output_file)
@@ -159,6 +163,7 @@ def test_mvp_runner_warns_and_continues_for_bad_individual_job(tmp_path):
         profiles_path=profiles_path,
         output_path=output_path,
         limit=1,
+        database_url=f"sqlite:///{(tmp_path / 'mvp.sqlite3').as_posix()}",
     )
 
     assert output_path.exists()
@@ -199,3 +204,46 @@ def test_mvp_runner_malformed_input_gives_clear_error(tmp_path):
             profiles_path=profiles_path,
             output_path=output_path,
         )
+
+
+def test_mvp_dry_run_skips_output_and_database_writes(tmp_path):
+    jobs_path = tmp_path / "jobs.json"
+    profiles_path = tmp_path / "profiles.json"
+    output_path = tmp_path / "mvp_results.csv"
+    database_path = tmp_path / "mvp.sqlite3"
+    _write_jobs(jobs_path, [_data_job()])
+    _write_profiles(profiles_path)
+
+    result = run_mvp_pipeline(
+        source_name="approved_json",
+        input_path=jobs_path,
+        profiles_path=profiles_path,
+        output_path=output_path,
+        dry_run=True,
+        database_url=f"sqlite:///{database_path.as_posix()}",
+    )
+
+    assert not output_path.exists()
+    assert not result.summary_path.exists()
+    assert not database_path.exists()
+    assert "Dry run requested" in result.summary["warnings"][-1]
+
+
+def test_mvp_runner_preflights_database_before_writing_outputs(tmp_path):
+    jobs_path = tmp_path / "jobs.json"
+    profiles_path = tmp_path / "profiles.json"
+    output_path = tmp_path / "mvp_results.csv"
+    _write_jobs(jobs_path, [_data_job()])
+    _write_profiles(profiles_path)
+
+    with pytest.raises(MvpPipelineError, match="Only empty DATABASE_URL"):
+        run_mvp_pipeline(
+            source_name="approved_json",
+            input_path=jobs_path,
+            profiles_path=profiles_path,
+            output_path=output_path,
+            database_url="postgresql://user:password@example/jobs",
+        )
+
+    assert not output_path.exists()
+    assert not output_path.with_name("mvp_results.summary.json").exists()

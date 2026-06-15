@@ -6,8 +6,10 @@ This project will eventually support approved job source adapters, shared ingest
 
 ## Current Status
 
-This repository is a Sprint 3-ready local baseline. It does not connect to a
-database or perform live job collection from restricted or unapproved sources.
+This repository is a Sprint 3-ready local baseline. It persists pipeline
+history, normalized jobs, deduped jobs, classifications, ranking scores, and
+match history to local SQLite. It does not perform live job collection from
+restricted or unapproved sources.
 
 The current code provides:
 
@@ -19,6 +21,8 @@ The current code provides:
   classification, deduplication, ranking, and JSON output
 - An MVP local pipeline runner that exports ranked per-student CSV/JSON results
   and a run summary
+- Local SQLite persistence with idempotent job, classification, score, and
+  match-history upserts
 - Normalized job/student schemas, deterministic ranking, and GCS summaries
 - A realistic labelled fixture and evaluation command
 - pytest, Ruff, Black, mypy, and GitHub Actions checks
@@ -83,8 +87,10 @@ python -m hope_job_agent.pipeline.run_mvp --source approved_json --input data/sa
 ```
 
 It writes `outputs/mvp_results.csv` plus
-`outputs/mvp_results.summary.json`. See `docs/mvp_pipeline.md` for the input
-format, output fields, flags, and current limitations.
+`outputs/mvp_results.summary.json`, and persists the run to
+`data/hope_job_agent.sqlite3` unless `DATABASE_URL` or `--database-url` points
+to another SQLite database. See `docs/mvp_pipeline.md` for the input format,
+output fields, flags, and current limitations.
 
 Run the MVP pipeline with a KSBIT-compatible local export:
 

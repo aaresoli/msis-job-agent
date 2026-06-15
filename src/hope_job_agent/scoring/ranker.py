@@ -7,6 +7,8 @@ from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.match import JobMatch
 from hope_job_agent.models.student import StudentProfile
 
+RANKER_VERSION = "deterministic-v0"
+
 
 @dataclass(frozen=True)
 class RankingWeights:

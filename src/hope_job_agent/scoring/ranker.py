@@ -56,7 +56,7 @@ def explain_job_score(
 
     searchable_text = f"{job.title} {job.description}".lower()
     score = 0.0
-    individual_scores = {"Skill Score": 0.0, "Role Score": 0.0, "Concentration_Score": 0.0, "OPT/CPT Score": 0.0, "Seniority Match Score": 0.0, "Seniority Mismatch Score": 0.0}
+    individual_scores = {"Skill Score": 0.0, "Role Score": 0.0, "Concentration Score": 0.0, "OPT/CPT Score": 0.0, "Seniority Match Score": 0.0, "Seniority Mismatch Score": 0.0}
     reasons: list[str] = []
 
     for skill in _normalize_terms(student.skills):
@@ -94,7 +94,7 @@ def explain_job_score(
         individual_scores["Seniority Mismatch Score"] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
-    return score, individual_scores, reasons, {"seniority": seniority_label}
+    return score, reasons, {"seniority": seniority_label}
 
 
 def infer_seniority(job: JobPosting) -> str:

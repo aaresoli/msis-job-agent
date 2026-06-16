@@ -60,6 +60,32 @@
       "seniority": "Early/Mid",
       "concentration_tags": ["Enterprise Systems"],
       "opt_cpt_flag": null
+    },
+    {
+      "source_job_id": "sample-job-004",
+      "title": "AI Engineer",
+      "company": "Example Developers",
+      "location": "Austin, TX",
+      "description": "Build and scale production-ready artificial intelligence and machine learning applications.",
+      "url": "https://example.com/jobs/ai-engineer",
+      "posted_date": "2026-05-25",
+      "employment_type": "Full-time",
+      "seniority": "Early/Mid",
+      "concentration_tags": ["Information Systems Research in AI"],
+      "opt_cpt_flag": null
+    },
+    {
+      "source_job_id": "sample-job-005",
+      "title": "AI Compliance Officer",
+      "company": "Example Developers",
+      "location": "Austin, TX",
+      "description": "Ensure the organization's artificial intelligence systems adhere to legal, ethical, and regulatory standards.",
+      "url": "https://example.com/jobs/ai-compliance-officer",
+      "posted_date": "2026-05-25",
+      "employment_type": "Full-time",
+      "seniority": "Mid",
+      "concentration_tags": ["Information Systems Research in AI"],
+      "opt_cpt_flag": true
     }
   ]
 }

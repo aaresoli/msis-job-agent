@@ -32,6 +32,38 @@
       "ai_matching_consent": true,
       "profile_version": 1,
       "updated_at": "2026-05-22T14:30:00Z"
+    },
+    {
+      "student_id": "msis-003",
+      "name": "Matthew Davis",
+      "concentration": "Digital Transformation with AI",
+      "academic_stage": "Returning / finishing up",
+      "target_roles": ["Chief AI Officer", "Business Analyst", "AI Compliance Manager"],
+      "skills": ["R Studio", "SQL", "Tableau", "Prompt Engineering"],
+      "work_auth_status": "U.S. Citizen / Green Card",
+      "geo_preference": ["Midwest (Chicago, Indy, Cincy)", "East Coast (NYC, Boston, DC)"],
+      "remote_preference": "On-site is fine",
+      "delivery_preference": "Daily or weekly email",
+      "match_frequency": "Once a day",
+      "ai_matching_consent": true,
+      "profile_version": 1,
+      "updated_at": "2026-06-16T16:00:00Z"
+    },
+    {
+      "student_id": "msis-004",
+      "name": "Anna Stevens",
+      "concentration": "Information Systems Research in AI",
+      "academic_stage": "Incoming student (Fall)",
+      "target_roles": ["AI Engineer", "AI / Data Architect"],
+      "skills": ["Python", "R Studio", "Excel"],
+      "work_auth_status": "U.S. Citizen / Green Card",
+      "geo_preference": ["East Coast (NYC, Boston, DC)"],
+      "remote_preference": "Online is fine",
+      "delivery_preference": "Daily or weekly email",
+      "match_frequency": "Once a day",
+      "ai_matching_consent": true,
+      "profile_version": 1,
+      "updated_at": "2026-06-16T16:00:00Z"
     }
   ]
 }

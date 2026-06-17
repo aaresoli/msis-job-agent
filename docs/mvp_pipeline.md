@@ -19,7 +19,10 @@ Optional flags:
 - `--source-limit N`: for `ksbit_export`, return at most `N` source records
   after source filtering.
 - `--dry-run`: execute ingestion, normalization, deduplication, classification,
-  and ranking without writing output files.
+  and ranking without writing output files or database rows.
+- `--database-url sqlite:///path/to.db`: persist to a specific SQLite database.
+  If omitted, the runner uses `DATABASE_URL`; if that is empty, it writes
+  `data/hope_job_agent.sqlite3`.
 - `--verbose`: enable debug logging.
 
 KSBIT-compatible local exports can use the same runner:
@@ -42,8 +45,10 @@ The runner composes the Sprint 2 modules in this order:
    `classification.classifier.classify_job_posting`.
 8. Loads local student profiles.
 9. Ranks jobs per consenting profile with `scoring.ranker.rank_jobs_for_student`.
-10. Exports a CSV or JSON results file.
-11. Writes a summary JSON beside the results file.
+10. Upserts normalized jobs, deduped jobs, classification results, ranking
+    scores, match history, and the current run into SQLite.
+11. Exports a CSV or JSON results file.
+12. Writes a summary JSON beside the results file.
 
 ## Input Format
 
@@ -112,6 +117,11 @@ The summary file is named beside the output path. For
 It includes run ID, timestamp, paths, counts for raw/normalized/duplicate/
 unique/classified jobs, profile counts, total ranked matches, warnings, errors,
 and runtime seconds.
+
+SQLite persistence is idempotent for pipeline entities. Rerunning the same input
+creates a new `pipeline_runs` row but updates existing normalized job, deduped
+job, classification, ranking score, and match-history records instead of
+duplicating them.
 
 ## Known Limitations
 

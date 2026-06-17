@@ -272,6 +272,7 @@ def test_ksbit_export_is_compatible_with_mvp_runner(tmp_path):
     export_path = tmp_path / "ksbit_jobs.json"
     profiles_path = tmp_path / "profiles.json"
     output_path = tmp_path / "mvp_results.csv"
+    database_path = tmp_path / "mvp.sqlite3"
     _write_json(export_path, [_valid_record()])
     _write_profiles(profiles_path)
 
@@ -280,9 +281,11 @@ def test_ksbit_export_is_compatible_with_mvp_runner(tmp_path):
         input_path=export_path,
         profiles_path=profiles_path,
         output_path=output_path,
+        database_url=f"sqlite:///{database_path.as_posix()}",
     )
 
     assert output_path.exists()
+    assert database_path.exists()
     assert result.summary["source"] == KSBIT_SOURCE_NAME
     assert result.summary["raw_count"] == 1
     assert result.summary["unique_count"] == 1

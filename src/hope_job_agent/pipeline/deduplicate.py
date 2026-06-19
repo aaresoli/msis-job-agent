@@ -1,19 +1,9 @@
 """Deduplication helpers for normalized job postings."""
 
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.pipeline.normalize import normalize_job
 from hope_job_agent.utils.hashing import stable_hash
-
-TRACKING_PARAMS = {
-    "fbclid",
-    "gclid",
-    "mc_cid",
-    "mc_eid",
-    "ref",
-    "source",
-}
+from hope_job_agent.utils.url import canonicalize_url
 
 
 def deduplicate_jobs(jobs: list[JobPosting]) -> list[JobPosting]:
@@ -50,27 +40,6 @@ def deduplicate_jobs(jobs: list[JobPosting]) -> list[JobPosting]:
         unique_jobs.append(normalized_job)
 
     return unique_jobs
-
-
-def canonicalize_url(url: str) -> str:
-    """Normalize URLs for duplicate detection."""
-
-    parsed = urlsplit(url.strip())
-    query_items = [
-        (key, value)
-        for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-        if not key.lower().startswith("utm_") and key.lower() not in TRACKING_PARAMS
-    ]
-    path = parsed.path.rstrip("/") or "/"
-    return urlunsplit(
-        (
-            parsed.scheme.lower(),
-            parsed.netloc.lower(),
-            path,
-            urlencode(query_items, doseq=True),
-            "",
-        )
-    )
 
 
 def _job_signature(job: JobPosting) -> tuple[str, str, str, str]:

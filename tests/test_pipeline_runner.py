@@ -33,7 +33,7 @@ def _job(
     )
 
 
-def test_run_pipeline_normalizes_validates_classifies_and_deduplicates():
+def test_run_pipeline_normalizes_validates_classifies_and_deduplicates(tmp_path):
     jobs = [
         _job("https://example.com/jobs/1", title=" Data Analyst Intern "),
         _job("https://example.com/jobs/1/", title="Duplicate Data Analyst Intern"),
@@ -50,7 +50,11 @@ def test_run_pipeline_normalizes_validates_classifies_and_deduplicates():
         ),
     ]
 
-    result = run_pipeline([FakeJobSource(jobs)])
+    result = run_pipeline(
+        [FakeJobSource(jobs)],
+        output_path=tmp_path / "pipeline_results.json",
+        database_url=f"sqlite:///{(tmp_path / 'pipeline.sqlite3').as_posix()}",
+    )
 
     assert result.raw_count == 4
     assert result.valid_count == 3

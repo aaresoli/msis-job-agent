@@ -32,6 +32,7 @@ class ApprovedJsonFetchResult:
     jobs: list[JobPosting]
     raw_count: int
     warnings: list[str]
+    metadata: ApprovedSourceMetadata
 
 
 class ApprovedSourceMetadata(BaseModel):
@@ -55,6 +56,11 @@ class ApprovedSourceMetadata(BaseModel):
         if not value:
             raise ValueError("terms_reviewed must be true for approved exports")
         return value
+
+    def audit_metadata(self) -> dict[str, Any]:
+        """Return metadata fields safe to persist with imported job records."""
+
+        return self.model_dump(mode="json", exclude_none=True)
 
 
 class ApprovedJsonJobRecord(BaseModel):
@@ -87,15 +93,21 @@ class ApprovedJsonJobRecord(BaseModel):
             raise ValueError("one of url, apply_url, or post_url is required")
         return self
 
-    def to_job_posting(self, default_source: str) -> JobPosting:
+    def to_job_posting(
+        self,
+        *,
+        default_source: str,
+        approval_metadata: ApprovedSourceMetadata,
+    ) -> JobPosting:
         """Convert an export record into the shared job posting model."""
 
         source = self.source.strip() if self.source and self.source.strip() else ""
         metadata = dict(self.raw_metadata)
-        if self.source_job_id:
-            metadata["source_job_id"] = self.source_job_id
         if self.model_extra:
             metadata.update(self.model_extra)
+        metadata["approval_metadata"] = approval_metadata.audit_metadata()
+        if self.source_job_id:
+            metadata["source_job_id"] = self.source_job_id
         return JobPosting(
             source=source or default_source,
             source_job_id=self.source_job_id,
@@ -142,7 +154,6 @@ class ApprovedJsonJobSource(BaseJobSource):
         """Fetch jobs while skipping malformed individual records when possible."""
 
         export = self._load_export()
-        self.source_name = export.metadata.source_name
         jobs: list[JobPosting] = []
         warnings: list[str] = []
 
@@ -150,7 +161,10 @@ class ApprovedJsonJobSource(BaseJobSource):
             try:
                 record = ApprovedJsonJobRecord.model_validate(raw_record)
                 jobs.append(
-                    record.to_job_posting(default_source=export.metadata.source_name)
+                    record.to_job_posting(
+                        default_source=export.metadata.source_name,
+                        approval_metadata=export.metadata,
+                    )
                 )
             except ValidationError as exc:
                 warnings.append(
@@ -162,6 +176,7 @@ class ApprovedJsonJobSource(BaseJobSource):
             jobs=jobs,
             raw_count=len(export.jobs),
             warnings=warnings,
+            metadata=export.metadata,
         )
 
     def health_check(self) -> bool:

@@ -13,6 +13,8 @@ from hope_job_agent.classification.taxonomy import (
 )
 from hope_job_agent.models.job import JobPosting
 
+CLASSIFIER_VERSION = "rules-v0"
+
 
 @dataclass(frozen=True)
 class JobClassification:

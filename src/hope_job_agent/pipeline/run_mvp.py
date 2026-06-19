@@ -36,6 +36,7 @@ from hope_job_agent.sources.ksbit_export import (
     KsbitExportSourceError,
 )
 from hope_job_agent.sources.registry import SourceComplianceError, ensure_source_allowed
+from hope_job_agent.storage import SQLiteJobStore, SQLiteJobStoreError
 from hope_job_agent.utils.hashing import stable_hash
 from hope_job_agent.utils.logging import configure_logging
 
@@ -84,6 +85,14 @@ class MvpPipelineResult:
     summary: dict[str, Any]
 
 
+@dataclass(frozen=True)
+class RankedProfileMatches:
+    """Ranked matches for one consenting profile."""
+
+    profile: StudentProfile
+    matches: list[JobMatch]
+
+
 def run_mvp_pipeline(
     *,
     source_name: str,
@@ -95,6 +104,7 @@ def run_mvp_pipeline(
     source_limit: int | None = None,
     dry_run: bool = False,
     verbose: bool = False,
+    database_url: str | None = None,
 ) -> MvpPipelineResult:
     """Run the approved-source MVP pipeline end to end."""
 
@@ -133,12 +143,17 @@ def run_mvp_pipeline(
     classified_jobs = _classify_jobs(unique_jobs, warnings)
 
     profiles = _load_student_profiles(profiles_path)
-    ranked_rows = _rank_jobs_for_profiles(
+    ranked_profile_matches = _rank_jobs_for_profiles(
         profiles=profiles,
         jobs=classified_jobs,
         limit=limit,
         warnings=warnings,
     )
+    ranked_rows = [
+        _match_to_row(ranked.profile, match)
+        for ranked in ranked_profile_matches
+        for match in ranked.matches
+    ]
     ranked_rows.sort(
         key=lambda row: (
             str(row["student_id"]),
@@ -148,15 +163,14 @@ def run_mvp_pipeline(
         )
     )
 
+    run_id = str(uuid4())
+    summary_path = _summary_path_for(output_path)
     if dry_run:
         warnings.append("Dry run requested; output files were not written.")
         LOGGER.info("Dry run requested; skipping output writes")
-    else:
-        _write_results(output_path, ranked_rows)
 
-    summary_path = _summary_path_for(output_path)
     summary = {
-        "run_id": str(uuid4()),
+        "run_id": run_id,
         "timestamp": datetime.now(UTC).isoformat(),
         "source": source_name,
         "source_since_date": source_since_date,
@@ -181,6 +195,37 @@ def run_mvp_pipeline(
     }
 
     if not dry_run:
+        resolved_database_url = (
+            database_url
+            if database_url is not None
+            else settings.database_url.get_secret_value()
+        )
+        store: SQLiteJobStore | None = None
+        try:
+            store = SQLiteJobStore(resolved_database_url)
+            store.preflight()
+            _write_results(output_path, ranked_rows)
+            store.persist_pipeline_run(
+                run_id=run_id,
+                run_type="mvp",
+                source=source_name,
+                summary=summary,
+                normalized_jobs=normalized_jobs,
+                valid_jobs=valid_jobs,
+                deduped_jobs=classified_jobs,
+                ranked_matches=[
+                    (ranked.profile, ranked.matches)
+                    for ranked in ranked_profile_matches
+                ],
+                input_path=input_path,
+                profiles_path=profiles_path,
+                output_path=output_path,
+            )
+        except SQLiteJobStoreError as exc:
+            raise MvpPipelineError(str(exc)) from exc
+        finally:
+            if store is not None:
+                store.close()
         _write_summary(summary_path, summary)
 
     return MvpPipelineResult(
@@ -352,10 +397,10 @@ def _rank_jobs_for_profiles(
     jobs: Sequence[JobPosting],
     limit: int | None,
     warnings: list[str],
-) -> list[dict[str, Any]]:
-    """Rank jobs for every consenting profile and return flat export rows."""
+) -> list[RankedProfileMatches]:
+    """Rank jobs for every consenting profile."""
 
-    rows: list[dict[str, Any]] = []
+    ranked_profiles: list[RankedProfileMatches] = []
     LOGGER.info("Ranking %s jobs for %s profiles", len(jobs), len(profiles))
 
     for profile in profiles:
@@ -368,9 +413,9 @@ def _rank_jobs_for_profiles(
         matches = rank_jobs_for_student(profile, list(jobs))
         if limit is not None:
             matches = matches[:limit]
-        rows.extend(_match_to_row(profile, match) for match in matches)
+        ranked_profiles.append(RankedProfileMatches(profile=profile, matches=matches))
 
-    return rows
+    return ranked_profiles
 
 
 def _match_to_row(profile: StudentProfile, match: JobMatch) -> dict[str, Any]:
@@ -502,6 +547,14 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run all steps but skip writing result and summary files.",
     )
     parser.add_argument(
+        "--database-url",
+        default=None,
+        help=(
+            "SQLite persistence target. Defaults to DATABASE_URL, or "
+            "data/hope_job_agent.sqlite3 when unset."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose logging.",
@@ -526,6 +579,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             source_limit=args.source_limit,
             dry_run=args.dry_run,
             verbose=args.verbose,
+            database_url=args.database_url,
         )
     except MvpPipelineError as exc:
         print(f"MVP pipeline failed: {exc}", file=sys.stderr)

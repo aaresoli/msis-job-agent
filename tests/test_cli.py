@@ -32,9 +32,15 @@ def _write_export(path):
     )
 
 
-def test_cli_run_pipeline_prints_summary_and_writes_output(tmp_path, capsys):
+def test_cli_run_pipeline_prints_summary_and_writes_output(
+    tmp_path,
+    capsys,
+    monkeypatch,
+):
     export_path = tmp_path / "jobs.json"
     output_path = tmp_path / "pipeline_results.json"
+    database_path = tmp_path / "pipeline.sqlite3"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
     _write_export(export_path)
 
     main(
@@ -55,6 +61,7 @@ def test_cli_run_pipeline_prints_summary_and_writes_output(tmp_path, capsys):
     assert "Deduplicated jobs: 1" in captured.out
     assert str(output_path) in captured.out
     assert output_path.exists()
+    assert database_path.exists()
 
 
 def test_cli_run_pipeline_fails_for_unreadable_source(tmp_path, capsys):

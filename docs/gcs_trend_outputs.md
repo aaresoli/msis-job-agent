@@ -2,78 +2,120 @@
 
 ## Purpose
 
-GCS-facing trend outputs provide Graduate Career Services with program-level
-job-market intelligence rather than student-personalized rankings. The early
-outputs are intended for spreadsheets, dashboards, scheduled reports, and
-advisor discussions about employer activity and hiring demand.
+GCS-facing trend outputs provide Graduate Career Services with an on-demand,
+program-level view of job opportunities and recruiting activity. The outputs
+support career coaching and employer-trend discussions without exposing
+student-level activity.
 
 ## Assumed `job_postings` Fields
 
-The SQL drafts assume one normalized, deduplicated row per posting in a table
+The query drafts assume one normalized, deduplicated row per posting in a table
 named `job_postings`.
 
-| Field | Expected use |
-| --- | --- |
-| `source` | Approved adapter or export that supplied the posting |
-| `title` | Job title used for role-mix analysis |
-| `company` | Employer name used for employer trends |
-| `location` | Location text used for city, state, and remote trends |
-| `description` | Posting description available for future analysis |
-| `url` | Posting identifier used during deduplication |
-| `posted_date` | Source-reported posting date |
-| `concentration_tags` | One or more MSIS concentration classifications |
-| `opt_cpt_flag` | Whether a posting is marked OPT/CPT friendly |
-| `ingested_at` or `retrieval_date` | Date or timestamp when the pipeline retrieved the posting |
+| Field | Expected use | Confirmation status |
+| --- | --- | --- |
+| `source` | Approved adapter or export that supplied the posting | Expected |
+| `title` | Job title used for role classification | Expected |
+| `company` | Employer name used for employer trends | Expected |
+| `location` | Location text used for geographic and remote trends | Expected |
+| `description` | Posting description available for future analysis | Expected |
+| `url` | Posting identifier used during deduplication | Expected |
+| `posted_date` | Source-reported posting date | Expected but may be missing |
+| `concentration_tags` | One or more MSIS concentration classifications | Storage format unconfirmed |
+| `opt_cpt_flag` | Explicit OPT/CPT-friendly indicator | Availability unconfirmed |
+| `retrieval_date` or `ingested_at` | Date or timestamp when the posting was retrieved | Field name unconfirmed |
+| Active status or expiration date | Determines whether a posting remains active | Not yet confirmed |
 
-## Early GCS-Facing Metrics
+## GCS Dashboard Metrics
 
-| Metric | Definition |
-| --- | --- |
-| Employer count | Number of unique employers represented in the selected period |
-| Top employers | Employers with the highest posting counts |
-| Repeated employers | Employers with more than one posting in the selected period |
-| Role mix | Posting distribution across broad roles inferred from title keywords |
-| Concentration mix | Posting distribution across MSIS concentration tags |
-| Location trends | Posting counts by location text or remote status |
-| Posting freshness | Posting counts grouped by age since `posted_date` |
-| OPT/CPT-friendly postings | Count of postings where `opt_cpt_flag` is true |
-| New postings by date/month | Posting volume grouped by day or month |
+### 1. Job Market Overview
+
+- Total active postings, using a documented 90-day posting-age proxy until an
+  active-status or expiration field is confirmed.
+- New postings this week.
+- Unique employers.
+- Posting count by approved source.
+- Top employers and repeated employers.
+- Top locations and role categories.
+- Posting freshness by age bucket.
+- New postings by date and month.
+
+### 2. Concentration Insights
+
+For each MSIS concentration:
+
+- Posting count.
+- Top role categories.
+- Top employers.
+- Top locations.
+
+The SQL drafts assume `concentration_tags` is a PostgreSQL text array. They must
+be adjusted if the final schema uses JSON or a separate join table.
+
+### 3. OPT/CPT Opportunities
+
+- Total postings explicitly marked OPT/CPT friendly.
+- New OPT/CPT-friendly postings this week.
+- Top employers with OPT/CPT-friendly postings.
+- Top locations for OPT/CPT-friendly postings.
+
+OPT/CPT availability in KelleyLink is not confirmed. Counts must include only
+records explicitly marked `true`; missing values remain unknown and must not be
+inferred from title, company, description, or location.
+
+### 4. Employer Activity
+
+- Employer name.
+- Posting count.
+- Recent roles posted.
+- Approved source.
+- Last retrieval date.
+
+The final retrieval field may be named `retrieval_date` or `ingested_at`. The
+query draft uses `retrieval_date` as a placeholder until the schema is settled.
+
+### 5. Recruiting Events
+
+When an approved event schema is available, the dashboard may show:
+
+- Employer name.
+- Event name and type.
+- Event date.
+- Related concentration or role, when available.
+
+KelleyLink includes event information broadly, but no project-specific Denodo
+view, endpoint, or export exists yet. The event query remains commented out
+until the event fields and employer join key are approved.
 
 ## SQL/Query Drafts
 
-PostgreSQL-style query drafts are maintained in
-`sql/gcs_trend_queries.sql`. The file includes:
+PostgreSQL-style drafts are maintained in `sql/gcs_trend_queries.sql`. They
+cover the five dashboard sections while documenting unconfirmed fields and
+temporary assumptions.
 
-1. Unique employer count
-2. Postings by source
-3. Top employers
-4. Repeated employers
-5. Role mix using title keywords
-6. Concentration mix using `concentration_tags`
-7. Location trends
-8. Posting freshness by age bucket
-9. OPT/CPT-friendly posting count
-10. New postings by date
-11. Monthly posting trend
+## Source and Access Assumptions
 
-## Notes and Assumptions
+- KelleyLink job-posting access depends on KSBIT creating a Denodo view,
+  endpoint, or scheduled export after the required fields are confirmed.
+- No project-specific KelleyLink API endpoint currently exists.
+- Handshake currently provides past and upcoming interview schedules and is not
+  confirmed for MVP job-posting ingestion.
+- Direct Handshake API integration is not part of the MVP.
+- Refresh frequency for KSBIT endpoints or exports is not finalized.
+- OPT/CPT, active status, expiration date, retrieval date, and the final
+  `concentration_tags` representation remain unconfirmed.
+- Queries must run against approved, normalized, and deduplicated records.
 
-- Final SQL may need adjustment after the database schema is finalized.
-- The concentration-mix query depends on whether `concentration_tags` are
-  stored as an array, JSON field, or separate join table.
-- Queries should run against normalized and deduplicated postings.
-- Missing `posted_date` values should be reported separately or excluded from
-  freshness and date-based metrics.
-- `ingested_at` and `retrieval_date` represent the same reporting concept; the
-  final schema should standardize on one field name.
-- Role groups based on title keywords are an early approximation and may later
-  use classifier-generated role tags.
-- Trend reports should include source name and retrieval date for traceability.
+## Out of Scope
 
-## Future Enhancements
+The MSI-34 trend outputs do not include:
 
-Based on GCS feedback, future outputs may include student-progress metrics such
-as application activity, interview progress, offer outcomes, advising
-touchpoints, and placement status. These metrics require approved access to
-student-level systems such as KelleyLink, Handshake, or advising platforms and
-must follow applicable privacy, access-control, and data-retention policies.
+- Student-level tracking or individual student progress.
+- Application analytics or application status.
+- Interview status analytics.
+- Offer tracking or outcomes.
+- Alumni matching or alumni analytics.
+- Recruiter contact analytics or recommendations.
+
+Those capabilities require separate approval, privacy review, access controls,
+and confirmed source schemas.

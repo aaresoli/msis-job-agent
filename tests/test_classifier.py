@@ -82,17 +82,34 @@ def test_normalizes_legacy_concentration_tags():
 
 
 def test_classify_job_posting_returns_tagged_copy_without_mutating_original():
-    job = _job("Cybersecurity Analyst", "Investigate vulnerabilities and threats.")
+    job = _job(
+        "Cybersecurity Analyst",
+        "Investigate vulnerabilities and threats. CPT candidates are welcome.",
+    )
 
     tagged_job = classify_job_posting(job)
 
     assert job.role_tags == []
     assert job.concentration_tags == []
+    assert job.opt_cpt_flag is None
     assert tagged_job.role_tags == ["Cybersecurity Analyst"]
     assert tagged_job.concentration_tags == ["Cybersecurity"]
     assert tagged_job.role_confidence_scores["Cybersecurity Analyst"] >= 0.5
     assert tagged_job.concentration_confidence_scores["Cybersecurity"] >= 0.5
     assert tagged_job.classification_uncertain is False
+    assert tagged_job.opt_cpt_flag is True
+
+
+def test_classify_job_posting_preserves_trusted_source_opt_cpt_flag():
+    job = _job(
+        "Cybersecurity Analyst",
+        "This role asks standard work authorization questions.",
+        opt_cpt_flag=False,
+    )
+
+    tagged_job = classify_job_posting(job)
+
+    assert tagged_job.opt_cpt_flag is False
 
 
 def test_unknown_posting_falls_back_to_other_with_uncertainty():

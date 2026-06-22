@@ -11,6 +11,7 @@ from hope_job_agent.classification.taxonomy import (
     ROLE_KEYWORDS,
     ROLE_TO_CONCENTRATIONS,
 )
+from hope_job_agent.classification.work_authorization import detect_work_authorization
 from hope_job_agent.models.job import JobPosting
 
 CLASSIFIER_VERSION = "rules-v0"
@@ -94,6 +95,7 @@ def classify_job_posting(job: JobPosting) -> JobPosting:
     """Return a copy of the posting with inferred role and concentration tags."""
 
     classification = classify_job(job)
+    work_authorization = detect_work_authorization(job)
     return job.model_copy(
         update={
             "role_tags": classification.role_tags,
@@ -103,6 +105,11 @@ def classify_job_posting(job: JobPosting) -> JobPosting:
                 classification.concentration_confidence_scores
             ),
             "classification_uncertain": classification.is_uncertain,
+            "opt_cpt_flag": (
+                job.opt_cpt_flag
+                if job.opt_cpt_flag is not None
+                else work_authorization.opt_cpt_flag
+            ),
         }
     )
 

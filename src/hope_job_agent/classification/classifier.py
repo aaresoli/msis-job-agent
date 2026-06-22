@@ -180,9 +180,7 @@ def _rank_confident_tags(
     taxonomy_order: list[str],
 ) -> list[str]:
     source_tags = [
-        tag
-        for tag, score in scores.items()
-        if score == 1.0 and tag in taxonomy_order
+        tag for tag, score in scores.items() if score == 1.0 and tag in taxonomy_order
     ]
     inferred_tags = [
         tag

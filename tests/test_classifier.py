@@ -145,8 +145,7 @@ def test_trusted_source_tags_receive_full_confidence():
     ]
     assert classification.role_confidence_scores["Product / Project Manager"] == 1.0
     assert (
-        classification.concentration_confidence_scores["Data Analytics and AI"]
-        == 1.0
+        classification.concentration_confidence_scores["Data Analytics and AI"] == 1.0
     )
 
 

@@ -58,7 +58,14 @@ def explain_job_score(
 
     searchable_text = f"{job.title} {job.description}".lower()
     score = 0.0
-    individual_scores = {"Skill Score": 0.0, "Role Score": 0.0, "Concentration Score": 0.0, "OPT/CPT Score": 0.0, "Seniority Match Score": 0.0, "Seniority Mismatch Score": 0.0}
+    individual_scores = {
+        "Skill Score": 0.0,
+        "Role Score": 0.0,
+        "Concentration Score": 0.0,
+        "OPT/CPT Score": 0.0,
+        "Seniority Match Score": 0.0,
+        "Seniority Mismatch Score": 0.0,
+    }
     reasons: list[str] = []
 
     for skill in _normalize_terms(student.skills):
@@ -93,15 +100,13 @@ def explain_job_score(
         reasons.append(f"Seniority match: {seniority_label}")
     elif preferred_seniority and seniority_label:
         score += weights.seniority_mismatch_penalty
-        individual_scores["Seniority Mismatch Score"] += weights.seniority_mismatch_penalty
+        individual_scores[
+            "Seniority Mismatch Score"
+        ] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
-    reasons.append(f"Skill Score: {individual_scores["Skill Score"]}")
-    reasons.append(f"Role Score: {individual_scores["Role Score"]}")
-    reasons.append(f"Concentration Score: {individual_scores["Concentration Score"]}")
-    reasons.append(f"OPT/CPT Score: {individual_scores["OPT/CPT Score"]}")
-    reasons.append(f"Seniority Match Score: {individual_scores["Seniority Match Score"]}")
-    reasons.append(f"Seniority Mismatch Score: {individual_scores["Seniority Mismatch Score"]}")
+    for label, value in individual_scores.items():
+        reasons.append(f"{label}: {value}")
 
     return score, reasons, {"seniority": seniority_label}
 

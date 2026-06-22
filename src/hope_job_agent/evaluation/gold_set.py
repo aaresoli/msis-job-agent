@@ -136,9 +136,7 @@ class RankingEvaluation:
         means: dict[str, float] = {}
         for relevance in RELEVANCE_WEIGHTS:
             scores = [
-                result.score
-                for result in self.results
-                if result.relevance == relevance
+                result.score for result in self.results if result.relevance == relevance
             ]
             if scores:
                 means[relevance] = sum(scores) / len(scores)
@@ -214,4 +212,3 @@ def _ratio(numerator: int, denominator: int) -> float:
     if denominator == 0:
         return 0.0
     return numerator / denominator
-

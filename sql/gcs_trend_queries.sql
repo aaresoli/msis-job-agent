@@ -69,15 +69,15 @@ limit 20;
 select
   case
     when lower(title) like '%security%' or lower(title) like '%cyber%'
-      then 'Cybersecurity'
+      then 'Cybersecurity Analyst'
     when lower(title) like '%data%' or lower(title) like '%analytics%'
-      then 'Data and Analytics'
+      then 'Data Analyst / BI Engineer'
     when lower(title) like '%consult%' or lower(title) like '%strategy%'
-      then 'IT Strategy and Consulting'
+      then 'IT Consultant / Tech Risk'
     when lower(title) like '%digital%' or lower(title) like '%automation%'
-      then 'Digital Enterprise Systems'
+      then 'Product / Project Manager'
     when lower(title) like '%system%' or lower(title) like '%erp%'
-      then 'Enterprise Systems'
+      then 'IT Consultant / Tech Risk'
     else 'Other'
   end as role_group,
   count(*) as posting_count
@@ -99,15 +99,15 @@ with classified_jobs as (
     concentration_tag,
     case
       when lower(title) like '%security%' or lower(title) like '%cyber%'
-        then 'Cybersecurity'
+        then 'Cybersecurity Analyst'
       when lower(title) like '%data%' or lower(title) like '%analytics%'
-        then 'Data and Analytics'
+        then 'Data Analyst / BI Engineer'
       when lower(title) like '%consult%' or lower(title) like '%strategy%'
-        then 'IT Strategy and Consulting'
+        then 'IT Consultant / Tech Risk'
       when lower(title) like '%digital%' or lower(title) like '%automation%'
-        then 'Digital Enterprise Systems'
+        then 'Product / Project Manager'
       when lower(title) like '%system%' or lower(title) like '%erp%'
-        then 'Enterprise Systems'
+        then 'IT Consultant / Tech Risk'
       else 'Other'
     end as role_group
   from job_postings

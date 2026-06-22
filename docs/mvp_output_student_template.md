@@ -134,8 +134,8 @@ Hi [Student Name],
    Source: KelleyLink
    Posted: September 8, 2026
    Match: Excellent Match
-   Role Category: Data and Analytics
-   Concentration Fit: Business Analytics
+   Role Category: Data Analyst / BI Engineer
+   Concentration Fit: Data Analytics and AI
    OPT/CPT Friendly: Yes
    Why This Matched: Matches your analytics concentration, SQL skills, and
    consulting target role.
@@ -151,20 +151,20 @@ Hi [Student Name],
    Source: approved_json
    Posted: September 6, 2026
    Match: Strong Match
-   Role Category: IT Strategy and Consulting
-   Concentration Fit: IT Strategy / Consulting
+   Role Category: IT Consultant / Tech Risk
+   Concentration Fit: Digital Transformation with AI
    OPT/CPT Friendly: Yes
    Why This Matched: Aligns with your target strategy roles and technology
    consulting interests.
    Apply: https://example.com/jobs/technology-strategy-analyst
 
-3. Enterprise Systems Analyst
+3. ERP Systems Analyst
    Example Manufacturing | Indianapolis, IN
    Source: employer_careers
    Posted: September 4, 2026
    Match: Good Match
-   Role Category: Enterprise Systems
-   Concentration Fit: Enterprise Systems
+   Role Category: IT Consultant / Tech Risk
+   Concentration Fit: Digital Transformation with AI
    OPT/CPT Friendly: Unknown
    Why This Matched: Matches your ERP interest and preferred Indiana location.
    Apply: https://example.com/jobs/enterprise-systems-analyst
@@ -173,7 +173,7 @@ Hi [Student Name],
 
 Profile Used For Matching
 
-Concentration: Business Analytics
+Concentration: Data Analytics and AI
 Target Roles: Data Analyst, Analytics Consultant, Technology Consultant
 Location Preference: Indiana, Chicago, or Remote
 Work Authorization: OPT/CPT sponsorship required

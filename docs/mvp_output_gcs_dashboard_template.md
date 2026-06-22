@@ -116,14 +116,14 @@ Top locations
 5. Cincinnati, OH                 24 postings
 
 Top role categories
-1. Data and Analytics             126 postings
-2. IT Strategy and Consulting      94 postings
-3. Enterprise Systems              83 postings
+1. Data Analyst / BI Engineer     126 postings
+2. IT Consultant / Tech Risk       94 postings
+3. IT Consultant / Tech Risk       83 postings
 4. Cybersecurity                   71 postings
-5. Digital Enterprise Systems      58 postings
+5. Product / Project Manager       58 postings
 
 CONCENTRATION INSIGHTS
-Business Analytics
+Data Analytics and AI
 Posting count: 126
 Top roles: Data Analyst, BI Analyst, Analytics Consultant
 Top employers: Cummins, Eli Lilly, Deloitte
@@ -153,8 +153,8 @@ Cummins   Cummins Information Session   Information Session  Sep 12, 2026
 Deloitte  Technology Consulting Night   Recruiting Event     Sep 18, 2026
 
 Related areas
-Cummins: Business Analytics, Enterprise Systems
-Deloitte: IT Strategy and Consulting
+Cummins: Data Analytics and AI, Digital Transformation with AI
+Deloitte: Digital Transformation with AI
 ```
 
 ## 6. MVP Data Supported

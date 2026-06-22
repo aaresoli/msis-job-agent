@@ -24,6 +24,7 @@ The current code provides:
 - Local SQLite persistence with idempotent job, classification, score, and
   match-history upserts
 - Normalized job/student schemas, deterministic ranking, and GCS summaries
+- A checked ranking-weight config at `data/ranking_weights.json`
 - A realistic labelled fixture and evaluation command
 - A manually labeled gold set of real job postings for classifier and ranking
   evaluation
@@ -136,14 +137,25 @@ The script reports classifier role/concentration accuracy, ranking pairwise
 relevance accuracy, mean ranking score by relevance label, and classifier misses
 that need follow-up taxonomy or rule work.
 
+The current benchmark summary is captured in
+`docs/ranking_evaluation_report.md`.
+
+## Ranking Configuration
+
+The default deterministic ranking rubric is mirrored in
+`data/ranking_weights.json`. Use
+`hope_job_agent.scoring.ranker.load_ranking_weights()` to validate and load a
+different weight file for experiments without changing the hard-coded safe
+defaults used by the MVP runner.
+
 ## Developer Commands
 
 ```bash
 make install
 make test
 make lint
-python -m black --check .
-python -m mypy src
+make smoke
+make quality
 ```
 
 ## Team Workflow

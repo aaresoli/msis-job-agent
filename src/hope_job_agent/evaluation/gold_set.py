@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from hope_job_agent.classification.classifier import classify_job
+from hope_job_agent.classification.classifier import classify_job, classify_job_posting
 from hope_job_agent.datasets.gold_postings import GoldJobPosting
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.student import StudentProfile
@@ -18,11 +18,11 @@ BENCHMARK_STUDENT = StudentProfile(
     name="MSIS Benchmark Student",
     concentration="Data Analytics and AI",
     target_roles=[
-        "data analyst",
-        "cybersecurity analyst",
-        "technology risk",
-        "product manager",
-        "software engineer",
+        "Data Analyst / BI Engineer",
+        "Cybersecurity Analyst",
+        "IT Consultant / Tech Risk",
+        "Product / Project Manager",
+        "Software Engineer",
     ],
     skills=[
         "sql",
@@ -177,7 +177,10 @@ def evaluate_ranking(
     scored = [
         (
             posting,
-            score_job_for_student(student, _to_unlabeled_job_posting(posting)),
+            score_job_for_student(
+                student,
+                classify_job_posting(_to_unlabeled_job_posting(posting)),
+            ),
         )
         for posting in postings
     ]

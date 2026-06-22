@@ -25,6 +25,8 @@ The current code provides:
   match-history upserts
 - Normalized job/student schemas, deterministic ranking, and GCS summaries
 - A realistic labelled fixture and evaluation command
+- A manually labeled gold set of real job postings for classifier and ranking
+  evaluation
 - pytest, Ruff, Black, mypy, and GitHub Actions checks
 
 ## Compliance Notice
@@ -112,6 +114,27 @@ source-level filtering, and the future API integration path.
 ```bash
 hope-job-agent evaluate --dataset-file tests/fixtures/labelled_postings.json
 ```
+
+## Gold Job Posting Dataset
+
+The labeled benchmark set for classifier and ranking evaluation lives at
+`data/gold_job_postings_labeled.json`. Each record is a real public posting with
+manual labels for MSIS target role, role fit, concentration fit, seniority, and
+relevance.
+
+Use `hope_job_agent.datasets.gold_postings.load_gold_postings()` to load and
+validate the records, and `GoldJobPosting.to_job_posting()` when a test or
+evaluation script needs the normalized `JobPosting` model.
+
+Run the benchmark evaluation script from the repository root:
+
+```bash
+python scripts/evaluate_gold_set.py
+```
+
+The script reports classifier role/concentration accuracy, ranking pairwise
+relevance accuracy, mean ranking score by relevance label, and classifier misses
+that need follow-up taxonomy or rule work.
 
 ## Developer Commands
 

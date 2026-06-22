@@ -96,6 +96,13 @@ def explain_job_score(
         individual_scores["Seniority Mismatch Score"] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
+    reasons.append(f"Skill Score: {individual_scores["Skill Score"]}")
+    reasons.append(f"Role Score: {individual_scores["Role Score"]}")
+    reasons.append(f"Concentration Score: {individual_scores["Concentration Score"]}")
+    reasons.append(f"OPT/CPT Score: {individual_scores["OPT/CPT Score"]}")
+    reasons.append(f"Seniority Match Score: {individual_scores["Seniority Match Score"]}")
+    reasons.append(f"Seniority Mismatch Score: {individual_scores["Seniority Mismatch Score"]}")
+
     return score, reasons, {"seniority": seniority_label}
 
 

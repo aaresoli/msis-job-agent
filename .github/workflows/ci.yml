@@ -15,11 +15,20 @@ jobs:
           python-version: "3.11"
       - name: Install
         run: python -m pip install -e ".[dev]"
-      - name: Tests
-        run: python -m pytest
       - name: Ruff
         run: python -m ruff check .
       - name: Black
         run: python -m black --check .
       - name: Mypy
         run: python -m mypy src
+      - name: Tests
+        run: python -m pytest
+      - name: MVP pipeline smoke test
+        run: |
+          python -m hope_job_agent.pipeline.run_mvp \
+            --source approved_json \
+            --input data/sample_jobs.json \
+            --profiles data/sample_profiles.json \
+            --output "$RUNNER_TEMP/mvp_results.csv" \
+            --limit 2 \
+            --database-url "sqlite:///$RUNNER_TEMP/mvp.sqlite3"

@@ -71,7 +71,7 @@ For `approved_json`, job input must be an approved JSON export envelope:
       "location": "Bloomington, IN",
       "description": "Use SQL and Python to analyze business data.",
       "url": "https://example.com/jobs/data-analyst-intern",
-      "concentration_tags": ["Business Analytics"],
+      "concentration_tags": ["Data Analytics and AI"],
       "opt_cpt_flag": true
     }
   ]

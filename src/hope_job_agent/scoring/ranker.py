@@ -1,13 +1,18 @@
 """Deterministic ranking helpers for student-job matching."""
 
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from pathlib import Path
 
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.match import JobMatch
 from hope_job_agent.models.student import StudentProfile
 
 RANKER_VERSION = "deterministic-v0"
+DEFAULT_RANKING_WEIGHTS_PATH = (
+    Path(__file__).resolve().parents[3] / "data" / "ranking_weights.json"
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +28,57 @@ class RankingWeights:
 
 
 DEFAULT_RANKING_WEIGHTS = RankingWeights()
+
+
+class RankingWeightsConfigError(ValueError):
+    """Raised when a ranking-weights config file is invalid."""
+
+
+def load_ranking_weights(
+    path: str | Path = DEFAULT_RANKING_WEIGHTS_PATH,
+) -> RankingWeights:
+    """Load a ranking-weights config file into the ranker rubric."""
+
+    config_path = Path(path)
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RankingWeightsConfigError(
+            f"Ranking weights config is not valid JSON: {config_path}: {exc.msg}"
+        ) from exc
+    except OSError as exc:
+        raise RankingWeightsConfigError(
+            f"Ranking weights config could not be read: {config_path}: {exc}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise RankingWeightsConfigError(
+            f"Ranking weights config must be a JSON object: {config_path}"
+        )
+
+    weight_names = {field.name for field in fields(RankingWeights)}
+    payload_keys = set(payload)
+    missing_keys = sorted(weight_names - payload_keys)
+    extra_keys = sorted(payload_keys - weight_names)
+    if missing_keys or extra_keys:
+        details = []
+        if missing_keys:
+            details.append(f"missing={missing_keys}")
+        if extra_keys:
+            details.append(f"extra={extra_keys}")
+        raise RankingWeightsConfigError(
+            "Ranking weights config keys do not match the ranker rubric: "
+            + ", ".join(details)
+        )
+
+    try:
+        values = {key: float(payload[key]) for key in weight_names}
+    except (TypeError, ValueError) as exc:
+        raise RankingWeightsConfigError(
+            f"Ranking weights config values must be numeric: {config_path}"
+        ) from exc
+
+    return RankingWeights(**values)
 
 
 def _normalize_terms(values: list[str]) -> list[str]:
@@ -58,7 +114,14 @@ def explain_job_score(
 
     searchable_text = f"{job.title} {job.description}".lower()
     score = 0.0
-    individual_scores = {"Skill Score": 0.0, "Role Score": 0.0, "Concentration Score": 0.0, "OPT/CPT Score": 0.0, "Seniority Match Score": 0.0, "Seniority Mismatch Score": 0.0}
+    individual_scores = {
+        "Skill Score": 0.0,
+        "Role Score": 0.0,
+        "Concentration Score": 0.0,
+        "OPT/CPT Score": 0.0,
+        "Seniority Match Score": 0.0,
+        "Seniority Mismatch Score": 0.0,
+    }
     reasons: list[str] = []
 
     for skill in _normalize_terms(student.skills):
@@ -93,15 +156,13 @@ def explain_job_score(
         reasons.append(f"Seniority match: {seniority_label}")
     elif preferred_seniority and seniority_label:
         score += weights.seniority_mismatch_penalty
-        individual_scores["Seniority Mismatch Score"] += weights.seniority_mismatch_penalty
+        individual_scores[
+            "Seniority Mismatch Score"
+        ] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
-    reasons.append(f"Skill Score: {individual_scores["Skill Score"]}")
-    reasons.append(f"Role Score: {individual_scores["Role Score"]}")
-    reasons.append(f"Concentration Score: {individual_scores["Concentration Score"]}")
-    reasons.append(f"OPT/CPT Score: {individual_scores["OPT/CPT Score"]}")
-    reasons.append(f"Seniority Match Score: {individual_scores["Seniority Match Score"]}")
-    reasons.append(f"Seniority Mismatch Score: {individual_scores["Seniority Mismatch Score"]}")
+    for label, value in individual_scores.items():
+        reasons.append(f"{label}: {value}")
 
     return score, reasons, {"seniority": seniority_label}
 
@@ -114,12 +175,12 @@ def infer_seniority(job: JobPosting) -> str:
     mid_terms = ["senior", "experienced"]
     entry_terms = ["intern", "internship", "new grad", "entry", "junior", "rotational"]
 
+    if any(_contains_term(searchable_text, term) for term in entry_terms):
+        return "Entry"
     if any(_contains_term(searchable_text, term) for term in senior_terms):
         return "Senior"
     if any(_contains_term(searchable_text, term) for term in mid_terms):
         return "Mid"
-    if any(_contains_term(searchable_text, term) for term in entry_terms):
-        return "Entry"
     return "Early/Mid"
 
 
@@ -146,14 +207,19 @@ def rank_jobs_for_student(
             JobMatch(job=job, score=score, reasons=reasons, metadata=metadata)
         )
 
-    return sorted(
-        matches,
-        key=lambda match: (
-            match.score,
-            match.job.posted_date is not None,
-            match.job.posted_date,
-            match.job.company,
-            match.job.title,
-        ),
-        reverse=True,
+    return sorted(matches, key=lambda match: _ranking_sort_key(student, match))
+
+
+def _ranking_sort_key(student: StudentProfile, match: JobMatch) -> tuple:
+    opt_priority = (
+        0 if not student.needs_cpt_opt or match.job.opt_cpt_flag is True else 1
+    )
+    posted_date = match.job.posted_date
+    date_priority = -posted_date.toordinal() if posted_date is not None else 0
+    return (
+        opt_priority,
+        -match.score,
+        date_priority,
+        match.job.company.casefold(),
+        match.job.title.casefold(),
     )

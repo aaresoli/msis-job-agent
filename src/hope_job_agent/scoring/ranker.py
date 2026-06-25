@@ -156,9 +156,7 @@ def explain_job_score(
         reasons.append(f"Seniority match: {seniority_label}")
     elif preferred_seniority and seniority_label:
         score += weights.seniority_mismatch_penalty
-        individual_scores[
-            "Seniority Mismatch Score"
-        ] += weights.seniority_mismatch_penalty
+        individual_scores["Seniority Mismatch Score"] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
     for label, value in individual_scores.items():

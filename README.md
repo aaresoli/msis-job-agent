@@ -16,7 +16,7 @@ The current code provides:
 - Package structure for a FastAPI-ready Python backend
 - Safe source adapter interfaces and registry guardrails
 - A compliant local JSON approved-source adapter for v0 ingestion demos
-- A KSBIT-compatible local JSON/CSV export adapter for approved exports
+- A KSBIT-compatible local JSON/CSV/XLSX export adapter for approved exports
 - A thin-slice CLI runner for ingestion, normalization, validation,
   classification, deduplication, ranking, and JSON output
 - An MVP local pipeline runner that exports ranked per-student CSV/JSON results
@@ -107,6 +107,12 @@ CSV exports are supported too:
 python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.csv --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results_csv.csv
 ```
 
+Approved 12Twenty/KelleyLink `.xlsx` exports are supported by the same adapter:
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input "/path/to/12Twenty Data Example v1.xlsx" --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results_xlsx.csv
+```
+
 See `docs/ksbit_export_adapter.md` for supported formats, alias mappings,
 source-level filtering, and the future API integration path.
 
@@ -190,4 +196,3 @@ Examples:
 The project brief references all 5 concentration tracks, while the current
 validated schema contains 4 tracks. Keep the 4-track schema until the advisor
 confirms the official fifth track name.
-

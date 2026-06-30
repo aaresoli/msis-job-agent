@@ -31,6 +31,13 @@ KSBIT-compatible local exports can use the same runner:
 python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.json --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results.csv
 ```
 
+Approved 12Twenty/KelleyLink `.xlsx` exports use the same `ksbit_export`
+source:
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input "/path/to/12Twenty Data Example v1.xlsx" --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results_xlsx.csv
+```
+
 ## What It Does
 
 The runner composes the Sprint 2 modules in this order:
@@ -83,8 +90,9 @@ Each job needs title, company, location, description, and one of `url`,
 `posted_date`, `employment_type`, `seniority`, `role_tags`,
 `concentration_tags`, `opt_cpt_flag`, and `raw_metadata`.
 
-For `ksbit_export`, job input can be a JSON list, wrapped JSON object, or CSV.
-See `docs/ksbit_export_adapter.md` for supported wrappers, required fields, and
+For `ksbit_export`, job input can be a JSON list, wrapped JSON object, CSV, or
+12Twenty/KelleyLink `.xlsx` export. See `docs/ksbit_export_adapter.md` for
+supported wrappers, required fields, status filtering, data minimization, and
 alias mappings.
 
 Profiles can be a JSON array or an object with a `profiles` array. Each profile

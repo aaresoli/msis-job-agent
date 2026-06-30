@@ -1,7 +1,9 @@
 import csv
 import json
+from datetime import datetime
 
 import pytest
+from openpyxl import Workbook
 
 from hope_job_agent.pipeline.run_mvp import run_mvp_pipeline
 from hope_job_agent.sources.ksbit_export import (
@@ -34,6 +36,113 @@ def _valid_record(**overrides):
     }
     record.update(overrides)
     return record
+
+
+TWELVE_TWENTY_HEADERS = [
+    "Job Posting ID",
+    "External ID",
+    "Job Title",
+    "Company Name",
+    "Company ID",
+    "Status",
+    "Posted Date",
+    "Application Start Date",
+    "Application Deadline Date",
+    "Submit Date",
+    "Approval Date",
+    "Job Description",
+    "Application URL",
+    "Application Email Address",
+    "Should Apply Externally",
+    "Should Apply Via Email",
+    "Should Apply Via Site",
+    "Location",
+    "Location Type",
+    "Job Type",
+    "Employment Type",
+    "Time Commitment",
+    "Work Authorization Requirement",
+    "Other Work Authorization",
+    "Eligible Majors / Programs",
+    "Employer Industry",
+    "Job Functions",
+    "Company Industries",
+    "Company Website",
+    "Company Employee Count",
+    "Company Location Address",
+    "Company Overview",
+    "Company LinkedIn URL",
+    "Application Count",
+    "Distinct Applicant Count",
+    "First Application Date",
+    "Last Application Date",
+    "Source Has JobPostings Row",
+    "Source Has JobPostingDetails Row",
+]
+
+
+def _valid_12twenty_record(**overrides):
+    record = {
+        "Job Posting ID": "35006705400001",
+        "External ID": "NULL",
+        "Job Title": "Data Analyst Intern",
+        "Company Name": "Example Analytics",
+        "Company ID": "181499997700001",
+        "Status": "Application Open",
+        "Posted Date": datetime(2026, 6, 23, 6, 19, 59),
+        "Application Start Date": "NULL",
+        "Application Deadline Date": datetime(2026, 7, 30, 4, 0, 0),
+        "Submit Date": "NULL",
+        "Approval Date": "NULL",
+        "Job Description": (
+            "<p>Build SQL &amp; Python dashboards.</p>"
+            "<ul><li>Partner with business teams.</li></ul>"
+        ),
+        "Application URL": "https://example.com/12twenty/data-analyst-intern",
+        "Application Email Address": "NULL",
+        "Should Apply Externally": 1,
+        "Should Apply Via Email": "NULL",
+        "Should Apply Via Site": "NULL",
+        "Location": (
+            '{"Rank":0,"CountryId":1,"CountryName":"United States (USA)",'
+            '"CityId":25554,"CityName":"Bloomington - IN"}'
+        ),
+        "Location Type": "Specify Location(s)",
+        "Job Type": "Internship",
+        "Employment Type": "NULL",
+        "Time Commitment": "NULL",
+        "Work Authorization Requirement": "All Work Authorizations Accepted",
+        "Other Work Authorization": "NULL",
+        "Eligible Majors / Programs": "MS in Information Systems",
+        "Employer Industry": "Technology",
+        "Job Functions": "Data Analytics",
+        "Company Industries": "Software",
+        "Company Website": "https://example.com",
+        "Company Employee Count": "100-500",
+        "Company Location Address": "Bloomington, IN",
+        "Company Overview": "Example company",
+        "Company LinkedIn URL": "https://www.linkedin.com/company/example",
+        "Application Count": 99,
+        "Distinct Applicant Count": 88,
+        "First Application Date": datetime(2026, 6, 24, 1, 0, 0),
+        "Last Application Date": datetime(2026, 6, 25, 1, 0, 0),
+        "Source Has JobPostings Row": 1,
+        "Source Has JobPostingDetails Row": 1,
+    }
+    record.update(overrides)
+    return record
+
+
+def _write_12twenty_xlsx(path, records, *, headers=None, leading_blank_row=False):
+    workbook = Workbook()
+    worksheet = workbook.active
+    if leading_blank_row:
+        worksheet.append([])
+    resolved_headers = headers or TWELVE_TWENTY_HEADERS
+    worksheet.append(resolved_headers)
+    for record in records:
+        worksheet.append([record.get(header) for header in resolved_headers])
+    workbook.save(path)
 
 
 def _write_profiles(path):
@@ -121,6 +230,250 @@ def test_ksbit_export_loads_csv_input(tmp_path):
     assert jobs[0].title == "Analytics Intern"
     assert jobs[0].company == "Example Analytics"
     assert jobs[0].url == "https://example.com/ksbit/analytics-intern"
+
+
+def test_ksbit_export_loads_12twenty_xlsx_input(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [_valid_12twenty_record()],
+        leading_blank_row=True,
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+
+    assert result.raw_count == 1
+    assert result.loaded_count == 1
+    assert result.skipped_count == 0
+    assert result.returned_count == 1
+    job = result.jobs[0]
+    assert job.source == KSBIT_SOURCE_NAME
+    assert job.source_job_id == "35006705400001"
+    assert job.title == "Data Analyst Intern"
+    assert job.company == "Example Analytics"
+    assert job.location == "Bloomington, IN"
+    assert job.description == (
+        "Build SQL & Python dashboards. Partner with business teams."
+    )
+    assert job.url == "https://example.com/12twenty/data-analyst-intern"
+    assert job.posted_date.isoformat() == "2026-06-23"
+    assert job.employment_type == "Internship"
+    assert job.opt_cpt_flag is True
+    assert job.raw_metadata["source_format"] == "xlsx"
+    assert job.raw_metadata["source_row_number"] == 3
+    assert job.raw_metadata["raw_payload"]["Job Description"].startswith("<p>")
+    assert job.raw_metadata["raw_payload"]["External ID"] is None
+    assert "Application Count" not in job.raw_metadata["raw_payload"]
+    assert "Distinct Applicant Count" not in job.raw_metadata["raw_payload"]
+    assert "First Application Date" not in job.raw_metadata["raw_payload"]
+    assert "Last Application Date" not in job.raw_metadata["raw_payload"]
+
+
+def test_ksbit_export_filters_12twenty_xlsx_statuses_by_default(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "open",
+                    "Application URL": "https://example.com/12twenty/open",
+                    "Status": "Application Open",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "rejected",
+                    "Application URL": "https://example.com/12twenty/rejected",
+                    "Status": "Rejected",
+                }
+            ),
+        ],
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+
+    assert result.raw_count == 2
+    assert result.loaded_count == 1
+    assert result.skipped_count == 1
+    assert [job.source_job_id for job in result.jobs] == ["open"]
+    assert any("Rejected=1" in warning for warning in result.warnings)
+
+
+def test_ksbit_export_can_include_all_12twenty_statuses(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "open",
+                    "Application URL": "https://example.com/12twenty/open",
+                    "Status": "Application Open",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "closed",
+                    "Application URL": "https://example.com/12twenty/closed",
+                    "Status": "Application Closed",
+                }
+            ),
+        ],
+    )
+
+    result = KsbitExportSource(
+        export_path,
+        allowed_statuses=None,
+    ).fetch_jobs_with_warnings()
+
+    assert result.raw_count == 2
+    assert result.loaded_count == 2
+    assert result.skipped_count == 0
+    assert [job.source_job_id for job in result.jobs] == ["open", "closed"]
+
+
+def test_ksbit_export_maps_12twenty_work_authorization(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "all-auth",
+                    "Application URL": "https://example.com/12twenty/all-auth",
+                    "Work Authorization Requirement": (
+                        "All Work Authorizations Accepted"
+                    ),
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "stem",
+                    "Application URL": "https://example.com/12twenty/stem",
+                    "Work Authorization Requirement": "STEM Eligible Degree",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "permanent",
+                    "Application URL": "https://example.com/12twenty/permanent",
+                    "Work Authorization Requirement": (
+                        "Permanent US Work Authorization Required"
+                    ),
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "citizen",
+                    "Application URL": "https://example.com/12twenty/citizen",
+                    "Work Authorization Requirement": (
+                        "Other Work Authorization Required"
+                    ),
+                    "Other Work Authorization": "Must be a US citizen",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "missing",
+                    "Application URL": "https://example.com/12twenty/missing",
+                    "Work Authorization Requirement": "NULL",
+                    "Other Work Authorization": "NULL",
+                }
+            ),
+        ],
+    )
+
+    jobs = KsbitExportSource(export_path).fetch_jobs()
+
+    assert {job.source_job_id: job.opt_cpt_flag for job in jobs} == {
+        "all-auth": True,
+        "stem": True,
+        "permanent": False,
+        "citizen": False,
+        "missing": None,
+    }
+
+
+def test_ksbit_export_uses_remote_location_type_for_12twenty_xlsx(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "remote",
+                    "Application URL": "https://example.com/12twenty/remote",
+                    "Location": "NULL",
+                    "Location Type": "Remote/Telecommute",
+                }
+            )
+        ],
+    )
+
+    job = KsbitExportSource(export_path).fetch_jobs()[0]
+
+    assert job.location == "Remote"
+
+
+def test_ksbit_export_skips_12twenty_xlsx_rows_missing_required_fields(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "valid",
+                    "Application URL": "https://example.com/12twenty/valid",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "email-only",
+                    "Application URL": "NULL",
+                    "Application Email Address": "jobs@example.com",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "site-only",
+                    "Application URL": "NULL",
+                    "Should Apply Via Site": 1,
+                }
+            ),
+        ],
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+
+    assert result.raw_count == 3
+    assert result.loaded_count == 1
+    assert result.skipped_count == 2
+    assert [job.source_job_id for job in result.jobs] == ["valid"]
+    assert any(
+        "missing required field(s): apply_url" in warning for warning in result.warnings
+    )
+    assert any("Skipped 2 KSBIT rows" in warning for warning in result.warnings)
+
+
+def test_ksbit_export_rejects_empty_xlsx_without_header_row(tmp_path):
+    export_path = tmp_path / "empty.xlsx"
+    workbook = Workbook()
+    workbook.save(export_path)
+
+    with pytest.raises(KsbitExportSourceError, match="header row"):
+        KsbitExportSource(export_path).fetch_jobs()
+
+
+def test_ksbit_export_rejects_xlsx_missing_required_headers(tmp_path):
+    export_path = tmp_path / "missing_headers.xlsx"
+    headers = [
+        header for header in TWELVE_TWENTY_HEADERS if header != "Application URL"
+    ]
+    _write_12twenty_xlsx(export_path, [_valid_12twenty_record()], headers=headers)
+
+    with pytest.raises(KsbitExportSourceError, match="missing required header"):
+        KsbitExportSource(export_path).fetch_jobs()
 
 
 def test_ksbit_export_maps_field_aliases_and_optional_values(tmp_path):
@@ -274,6 +627,30 @@ def test_ksbit_export_is_compatible_with_mvp_runner(tmp_path):
     output_path = tmp_path / "mvp_results.csv"
     database_path = tmp_path / "mvp.sqlite3"
     _write_json(export_path, [_valid_record()])
+    _write_profiles(profiles_path)
+
+    result = run_mvp_pipeline(
+        source_name=KSBIT_SOURCE_NAME,
+        input_path=export_path,
+        profiles_path=profiles_path,
+        output_path=output_path,
+        database_url=f"sqlite:///{database_path.as_posix()}",
+    )
+
+    assert output_path.exists()
+    assert database_path.exists()
+    assert result.summary["source"] == KSBIT_SOURCE_NAME
+    assert result.summary["raw_count"] == 1
+    assert result.summary["unique_count"] == 1
+    assert result.summary["total_ranked_matches"] == 1
+
+
+def test_ksbit_export_xlsx_is_compatible_with_mvp_runner(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    profiles_path = tmp_path / "profiles.json"
+    output_path = tmp_path / "mvp_results.csv"
+    database_path = tmp_path / "mvp.sqlite3"
+    _write_12twenty_xlsx(export_path, [_valid_12twenty_record()])
     _write_profiles(profiles_path)
 
     result = run_mvp_pipeline(

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import math
 import re
 from collections.abc import Mapping
@@ -22,6 +23,8 @@ from pydantic import ValidationError
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.sources.base import BaseJobSource
 from hope_job_agent.utils.hashing import stable_hash
+
+LOGGER = logging.getLogger(__name__)
 
 KSBIT_SOURCE_NAME = "ksbit_export"
 DEFAULT_LOCATION = "Not specified"
@@ -156,6 +159,7 @@ class KsbitExportSource(BaseJobSource):
         """Fetch jobs while skipping invalid individual export rows."""
 
         warnings: list[str] = []
+        LOGGER.info("Loading KSBIT export from %s", self.export_path)
         raw_records = self._load_records()
         source_records = _filter_allowed_statuses(
             raw_records=raw_records,
@@ -180,6 +184,15 @@ class KsbitExportSource(BaseJobSource):
         if self.limit is not None:
             filtered_jobs = filtered_jobs[: self.limit]
         compact_warnings = _compact_repeated_warnings(warnings)
+        for warning in compact_warnings:
+            LOGGER.warning(warning)
+        LOGGER.info(
+            "Loaded KSBIT export: raw=%s loaded=%s skipped=%s returned=%s",
+            len(raw_records),
+            len(jobs),
+            len(raw_records) - len(jobs),
+            len(filtered_jobs),
+        )
 
         return KsbitExportFetchResult(
             jobs=filtered_jobs,

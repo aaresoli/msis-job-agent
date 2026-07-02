@@ -33,6 +33,9 @@ Handshake access requires official access/API approval before implementation. Th
 
 - `approved_json`: approved local export fixture.
 - `employer_careers`: approved realistic local fixture.
+- `ksbit_export`: approved local JSON/CSV/XLSX export adapter for
+  KSBIT-compatible and 12Twenty/KelleyLink exports. It preserves source-row
+  context for auditability, excludes applicant/application analytics fields
+  from raw metadata, and does not use credentials or live collection.
 - `handshake`: restricted; blocked at runtime.
 - `linkedin_reference`: manual reference only; blocked at runtime.
-

@@ -1,10 +1,12 @@
 import csv
 import json
+import logging
 from datetime import datetime
 
 import pytest
 from openpyxl import Workbook
 
+from hope_job_agent.models.job import JobPosting
 from hope_job_agent.pipeline.run_mvp import run_mvp_pipeline
 from hope_job_agent.sources.ksbit_export import (
     KSBIT_SOURCE_NAME,
@@ -269,6 +271,71 @@ def test_ksbit_export_loads_12twenty_xlsx_input(tmp_path):
     assert "Last Application Date" not in job.raw_metadata["raw_payload"]
 
 
+def test_ksbit_export_creates_job_posting_and_preserves_safe_xlsx_metadata(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "metadata-job",
+                    "External ID": "REQ-2026-001",
+                    "Job Title": "Product Analytics Intern",
+                    "Company Name": "Metadata Labs",
+                    "Posted Date": datetime(2026, 7, 1, 9, 15, 0),
+                    "Job Description": (
+                        "<div>Analyze product funnels.</div>"
+                        "<p>Build SQL dashboards.</p>"
+                    ),
+                    "Application URL": "https://example.com/12twenty/metadata-job",
+                    "Location": (
+                        '{"Rank":0,"CountryName":"United States (USA)",'
+                        '"CityName":"Indianapolis - IN"}'
+                    ),
+                    "Job Type": "Internship",
+                    "Work Authorization Requirement": (
+                        "All Work Authorizations Accepted"
+                    ),
+                    "Employer Industry": "Analytics",
+                    "Company Overview": "Safe source context",
+                }
+            )
+        ],
+        leading_blank_row=True,
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+    job = result.jobs[0]
+    raw_payload = job.raw_metadata["raw_payload"]
+
+    assert isinstance(job, JobPosting)
+    assert job.source == KSBIT_SOURCE_NAME
+    assert job.source_job_id == "metadata-job"
+    assert job.title == "Product Analytics Intern"
+    assert job.company == "Metadata Labs"
+    assert job.location == "Indianapolis, IN"
+    assert job.description == "Analyze product funnels. Build SQL dashboards."
+    assert job.url == "https://example.com/12twenty/metadata-job"
+    assert job.posted_date.isoformat() == "2026-07-01"
+    assert job.employment_type == "Internship"
+    assert job.seniority is None
+    assert job.opt_cpt_flag is True
+    assert job.retrieved_at is not None
+    assert job.raw_metadata["source_format"] == "xlsx"
+    assert job.raw_metadata["source_row_number"] == 3
+    assert job.raw_metadata["source_job_id_was_generated"] is False
+    assert "ingested_at" in job.raw_metadata
+    assert raw_payload["External ID"] == "REQ-2026-001"
+    assert raw_payload["Employer Industry"] == "Analytics"
+    assert raw_payload["Company Overview"] == "Safe source context"
+    assert raw_payload["Posted Date"] == "2026-07-01T09:15:00"
+    assert raw_payload["Application Email Address"] is None
+    assert "Application Count" not in raw_payload
+    assert "Distinct Applicant Count" not in raw_payload
+    assert "First Application Date" not in raw_payload
+    assert "Last Application Date" not in raw_payload
+
+
 def test_ksbit_export_filters_12twenty_xlsx_statuses_by_default(tmp_path):
     export_path = tmp_path / "12twenty_jobs.xlsx"
     _write_12twenty_xlsx(
@@ -476,6 +543,204 @@ def test_ksbit_export_rejects_xlsx_missing_required_headers(tmp_path):
         KsbitExportSource(export_path).fetch_jobs()
 
 
+@pytest.mark.parametrize(
+    ("missing_header", "expected_missing_field"),
+    [
+        ("Job Title", "title"),
+        ("Company Name", "company"),
+        ("Job Description", "description"),
+        ("Application URL", "apply_url"),
+    ],
+)
+def test_ksbit_export_rejects_xlsx_missing_each_required_header(
+    tmp_path,
+    missing_header,
+    expected_missing_field,
+):
+    export_path = tmp_path / f"missing_{expected_missing_field}.xlsx"
+    headers = [header for header in TWELVE_TWENTY_HEADERS if header != missing_header]
+    _write_12twenty_xlsx(export_path, [_valid_12twenty_record()], headers=headers)
+
+    with pytest.raises(KsbitExportSourceError) as exc_info:
+        KsbitExportSource(export_path).fetch_jobs()
+
+    assert "missing required header" in str(exc_info.value)
+    assert expected_missing_field in str(exc_info.value)
+
+
+def test_ksbit_export_skips_xlsx_rows_with_empty_required_cells(tmp_path):
+    export_path = tmp_path / "empty_required_cells.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "valid",
+                    "Application URL": "https://example.com/12twenty/valid",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "missing-title",
+                    "Job Title": "",
+                    "Application URL": "https://example.com/12twenty/missing-title",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "missing-company",
+                    "Company Name": "   ",
+                    "Application URL": "https://example.com/12twenty/missing-company",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "missing-description",
+                    "Job Description": "NULL",
+                    "Application URL": (
+                        "https://example.com/12twenty/missing-description"
+                    ),
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "missing-url",
+                    "Application URL": "",
+                }
+            ),
+        ],
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+
+    assert result.raw_count == 5
+    assert result.loaded_count == 1
+    assert result.skipped_count == 4
+    assert result.returned_count == 1
+    assert [job.source_job_id for job in result.jobs] == ["valid"]
+    assert any(
+        "missing required field(s): title" in warning for warning in result.warnings
+    )
+    assert any(
+        "missing required field(s): company" in warning for warning in result.warnings
+    )
+    assert any(
+        "missing required field(s): description" in warning
+        for warning in result.warnings
+    )
+    assert any(
+        "missing required field(s): apply_url" in warning
+        for warning in result.warnings
+    )
+
+
+def test_ksbit_export_accepts_xlsx_rows_with_empty_optional_cells(tmp_path):
+    export_path = tmp_path / "empty_optional_cells.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "optional-empty",
+                    "Application URL": "https://example.com/12twenty/optional-empty",
+                    "Posted Date": "",
+                    "Location": "",
+                    "Location Type": "",
+                    "Job Type": "",
+                    "Employment Type": "",
+                    "Work Authorization Requirement": "",
+                    "Other Work Authorization": "",
+                    "Eligible Majors / Programs": "",
+                    "Job Functions": "",
+                }
+            )
+        ],
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+    job = result.jobs[0]
+
+    assert result.raw_count == 1
+    assert result.loaded_count == 1
+    assert result.skipped_count == 0
+    assert job.source_job_id == "optional-empty"
+    assert job.location == "Not specified"
+    assert job.posted_date is None
+    assert job.employment_type is None
+    assert job.seniority is None
+    assert job.concentration_tags == []
+    assert job.role_tags == []
+    assert job.opt_cpt_flag is None
+    assert job.raw_metadata["raw_payload"]["Location"] is None
+    assert job.raw_metadata["raw_payload"]["Posted Date"] is None
+
+
+def test_ksbit_export_keeps_xlsx_row_with_invalid_posted_date(tmp_path):
+    export_path = tmp_path / "invalid_posted_date.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "invalid-date",
+                    "Posted Date": "not-a-date",
+                    "Application URL": "https://example.com/12twenty/invalid-date",
+                }
+            )
+        ],
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+    job = result.jobs[0]
+
+    assert result.raw_count == 1
+    assert result.loaded_count == 1
+    assert job.source_job_id == "invalid-date"
+    assert job.posted_date is None
+    assert job.raw_metadata["raw_payload"]["Posted Date"] == "not-a-date"
+
+
+def test_ksbit_export_preserves_duplicate_xlsx_source_job_ids(tmp_path):
+    export_path = tmp_path / "duplicate_job_ids.xlsx"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "duplicate-id",
+                    "Job Title": "First Duplicate Role",
+                    "Application URL": "https://example.com/12twenty/duplicate-one",
+                }
+            ),
+            _valid_12twenty_record(
+                **{
+                    "Job Posting ID": "duplicate-id",
+                    "Job Title": "Second Duplicate Role",
+                    "Application URL": "https://example.com/12twenty/duplicate-two",
+                }
+            ),
+        ],
+    )
+
+    result = KsbitExportSource(export_path).fetch_jobs_with_warnings()
+
+    assert result.raw_count == 2
+    assert result.loaded_count == 2
+    assert result.skipped_count == 0
+    assert [job.source_job_id for job in result.jobs] == [
+        "duplicate-id",
+        "duplicate-id",
+    ]
+    assert [job.title for job in result.jobs] == [
+        "First Duplicate Role",
+        "Second Duplicate Role",
+    ]
+    assert [job.url for job in result.jobs] == [
+        "https://example.com/12twenty/duplicate-one",
+        "https://example.com/12twenty/duplicate-two",
+    ]
+
+
 def test_ksbit_export_maps_field_aliases_and_optional_values(tmp_path):
     export_path = tmp_path / "ksbit_jobs.json"
     _write_json(
@@ -523,6 +788,21 @@ def test_ksbit_export_skips_invalid_rows_with_warnings(tmp_path):
     assert result.returned_count == 1
     assert result.warnings
     assert "missing required field(s): apply_url" in result.warnings[0]
+
+
+def test_ksbit_export_logs_counts_without_raw_payload(tmp_path, caplog):
+    export_path = tmp_path / "ksbit_jobs.json"
+    _write_json(export_path, [_valid_record(), _valid_record(apply_url="")])
+
+    with caplog.at_level(logging.INFO, logger="hope_job_agent.sources.ksbit_export"):
+        KsbitExportSource(export_path).fetch_jobs_with_warnings()
+
+    log_text = caplog.text
+    assert "Loading KSBIT export from" in log_text
+    assert "Loaded KSBIT export: raw=2 loaded=1 skipped=1 returned=1" in log_text
+    assert "missing required field(s): apply_url" in log_text
+    assert "Use SQL and Python to analyze business data." not in log_text
+    assert "https://example.com/ksbit/business-analyst-intern" not in log_text
 
 
 def test_ksbit_export_rejects_empty_files(tmp_path):

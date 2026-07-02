@@ -2,6 +2,11 @@
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from hope_job_agent.sources.base import BaseJobSource
 
 
 class SourceStatus(StrEnum):
@@ -51,12 +56,18 @@ SOURCE_REGISTRY: dict[str, SourceMetadata] = {
     ),
     "ksbit_export": SourceMetadata(
         name="ksbit_export",
-        display_name="KSBIT Local Export",
+        display_name="KSBIT / 12Twenty Local Export",
         status=SourceStatus.APPROVED,
         source_type="local_export",
-        access_method="Approved local JSON/CSV export only; no live collection.",
+        access_method=(
+            "Approved local JSON/CSV/XLSX export only; no live collection, "
+            "credentials, or browser automation."
+        ),
         priority=3,
-        notes="KSBIT-compatible adapter for local exports and future API swap-in.",
+        notes=(
+            "Preserves source row context in raw_metadata while excluding "
+            "application/applicant analytics fields."
+        ),
     ),
     "handshake": SourceMetadata(
         name="handshake",
@@ -101,3 +112,40 @@ def ensure_source_allowed(source_name: str) -> SourceMetadata:
             f"without documented approval. Notes: {metadata.notes}"
         )
     return metadata
+
+
+def create_source_adapter(
+    source_name: str,
+    input_path: str | Path,
+    *,
+    source_since_date: str | None = None,
+    source_limit: int | None = None,
+) -> "BaseJobSource":
+    """Construct an approved local-file source adapter by registry name."""
+
+    ensure_source_allowed(source_name)
+
+    if source_name == "approved_json":
+        if source_since_date is not None or source_limit is not None:
+            raise SourceComplianceError(
+                "--source-since-date and --source-limit are only supported for "
+                "ksbit_export"
+            )
+        from hope_job_agent.sources.approved_json import ApprovedJsonJobSource
+
+        return ApprovedJsonJobSource(input_path)
+
+    if source_name == "ksbit_export":
+        from hope_job_agent.sources.ksbit_export import KsbitExportSource
+
+        return KsbitExportSource(
+            input_path,
+            since_date=source_since_date,
+            limit=source_limit,
+        )
+
+    raise SourceComplianceError(
+        f"Source '{source_name}' is registered but cannot be constructed from a "
+        "local input file by this pipeline. Supported local sources: "
+        "approved_json, ksbit_export."
+    )

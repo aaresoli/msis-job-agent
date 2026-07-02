@@ -10,6 +10,7 @@ class SourceSettings(BaseModel):
     """Source-related runtime settings."""
 
     approved_jobs_path: Path = Path("docs/examples/approved_jobs.sample.json")
+    ksbit_export_path: Path = Path("data/sample_ksbit_jobs.json")
 
 
 class SecretSettings(BaseModel):
@@ -32,6 +33,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr = SecretStr("")
     email_api_key: SecretStr = SecretStr("")
     approved_jobs_path: Path = Path("docs/examples/approved_jobs.sample.json")
+    ksbit_export_path: Path = Path("data/sample_ksbit_jobs.json")
     log_level: str = "INFO"
     environment: str = "development"
 
@@ -45,7 +47,10 @@ class Settings(BaseSettings):
     def sources(self) -> SourceSettings:
         """Return grouped source settings."""
 
-        return SourceSettings(approved_jobs_path=self.approved_jobs_path)
+        return SourceSettings(
+            approved_jobs_path=self.approved_jobs_path,
+            ksbit_export_path=self.ksbit_export_path,
+        )
 
     @property
     def secrets(self) -> SecretSettings:

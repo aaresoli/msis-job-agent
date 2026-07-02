@@ -17,6 +17,7 @@ from hope_job_agent.sources.registry import (
     SourceComplianceError,
     SourceMetadata,
     SourceStatus,
+    create_source_adapter,
     ensure_source_allowed,
     get_source_metadata,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "SourceComplianceError",
     "SourceMetadata",
     "SourceStatus",
+    "create_source_adapter",
     "ensure_source_allowed",
     "get_source_metadata",
 ]

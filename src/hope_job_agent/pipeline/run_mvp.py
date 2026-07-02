@@ -35,7 +35,10 @@ from hope_job_agent.sources.ksbit_export import (
     KsbitExportSource,
     KsbitExportSourceError,
 )
-from hope_job_agent.sources.registry import SourceComplianceError, ensure_source_allowed
+from hope_job_agent.sources.registry import (
+    SourceComplianceError,
+    create_source_adapter,
+)
 from hope_job_agent.storage import SQLiteJobStore, SQLiteJobStoreError
 from hope_job_agent.utils.hashing import stable_hash
 from hope_job_agent.utils.logging import configure_logging
@@ -246,41 +249,43 @@ def _load_source(
 
     _require_file(input_path, "Input file")
     try:
-        ensure_source_allowed(source_name)
+        source = create_source_adapter(
+            source_name,
+            input_path,
+            source_since_date=source_since_date,
+            source_limit=source_limit,
+        )
     except SourceComplianceError as exc:
         raise MvpPipelineError(str(exc)) from exc
 
     LOGGER.info("Loading source adapter: %s", source_name)
     if source_name == "approved_json":
-        if source_since_date is not None or source_limit is not None:
+        if not isinstance(source, ApprovedJsonJobSource):
             raise MvpPipelineError(
-                "--source-since-date and --source-limit are only supported for "
-                "ksbit_export"
+                "Source registry returned the wrong adapter for approved_json"
             )
-        approved_source = ApprovedJsonJobSource(input_path)
         try:
-            approved_result = approved_source.fetch_jobs_with_warnings()
+            approved_result = source.fetch_jobs_with_warnings()
         except ApprovedJsonSourceError as exc:
             raise MvpPipelineError(str(exc)) from exc
         return SourceLoadResult(
-            source=approved_source,
+            source=source,
             jobs=approved_result.jobs,
             raw_count=approved_result.raw_count,
             warnings=approved_result.warnings,
         )
 
     if source_name == "ksbit_export":
-        try:
-            ksbit_source = KsbitExportSource(
-                input_path,
-                since_date=source_since_date,
-                limit=source_limit,
+        if not isinstance(source, KsbitExportSource):
+            raise MvpPipelineError(
+                "Source registry returned the wrong adapter for ksbit_export"
             )
-            ksbit_result = ksbit_source.fetch_jobs_with_warnings()
+        try:
+            ksbit_result = source.fetch_jobs_with_warnings()
         except KsbitExportSourceError as exc:
             raise MvpPipelineError(str(exc)) from exc
         return SourceLoadResult(
-            source=ksbit_source,
+            source=source,
             jobs=ksbit_result.jobs,
             raw_count=ksbit_result.raw_count,
             warnings=ksbit_result.warnings,

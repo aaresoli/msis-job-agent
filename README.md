@@ -65,14 +65,25 @@ python -m pytest
 
 ## Run The V0 Pipeline
 
-The v0 runner only reads local approved JSON exports. It does not perform live
-scraping or connect to restricted job platforms.
+The v0 runner defaults to local approved JSON exports and can also read
+approved KSBIT-compatible local exports. It does not perform live scraping or
+connect to restricted job platforms.
 
 ```bash
 hope-job-agent run-pipeline --source-file docs/examples/approved_jobs.sample.json
 ```
 
 The default report is written to `data/output/pipeline_results.json`.
+
+Select the KSBIT export adapter with `--source ksbit_export`:
+
+```bash
+hope-job-agent run-pipeline --source ksbit_export --source-file data/sample_ksbit_jobs.json --output-file outputs/ksbit_pipeline_results.json
+```
+
+When `--source-file` is omitted, `approved_json` uses `APPROVED_JOBS_PATH` and
+`ksbit_export` uses `KSBIT_EXPORT_PATH`. Both default to checked-in local sample
+exports for development.
 
 You can also run the module directly:
 

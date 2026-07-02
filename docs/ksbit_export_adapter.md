@@ -10,6 +10,15 @@ browsers, log in to KSBIT, bypass CAPTCHA, use proxies, or require credentials.
 
 ## Example Usage
 
+The top-level CLI can run the adapter directly:
+
+```bash
+hope-job-agent run-pipeline --source ksbit_export --source-file data/sample_ksbit_jobs.json --output-file outputs/ksbit_pipeline_results.json
+```
+
+If `--source-file` is omitted, the top-level CLI uses `KSBIT_EXPORT_PATH`.
+The default development value is `data/sample_ksbit_jobs.json`.
+
 Run the MVP pipeline with the sample JSON export:
 
 ```bash
@@ -130,10 +139,20 @@ the original source description is preserved in raw metadata.
 
 ## Data Minimization
 
+The adapter preserves source-row context in `raw_metadata["raw_payload"]` so
+future reviewers can trace how a `JobPosting` was created. Datetimes are
+serialized to ISO strings, blank and `NULL` source values are normalized to
+`null`, and source row number/source format are recorded for spreadsheet
+exports.
+
 The Excel loader does not persist application/applicant analytics columns in
 `raw_metadata`, including `Application Count`, `Distinct Applicant Count`,
 `First Application Date`, and `Last Application Date`. Student- or
 applicant-level analytics remain out of scope until explicitly approved.
+
+Operational logs report file path, counts, and row-level warning summaries.
+They intentionally do not log raw job descriptions, apply URLs, or full source
+payloads.
 
 ## Counts And Warnings
 
@@ -150,6 +169,20 @@ extensions, malformed JSON, and exports with no valid jobs fail clearly.
 
 When `since_date` is used, records with missing or unparseable `posted_date`
 are included and warned about. `limit` is applied after `since_date` filtering.
+
+## Configuration And Registry Metadata
+
+Runtime settings:
+
+- `APPROVED_JOBS_PATH`: default input for the `approved_json` source.
+- `KSBIT_EXPORT_PATH`: default input for the `ksbit_export` source when
+  `hope-job-agent run-pipeline --source ksbit_export` omits `--source-file`.
+- `LOG_LEVEL`: controls application logging where runners call
+  `configure_logging`.
+
+The source registry marks `ksbit_export` as an approved local export source for
+JSON/CSV/XLSX files only. The approved access method excludes live collection,
+credentials, browser automation, and login/session workflows.
 
 ## Future KSBIT API Path
 

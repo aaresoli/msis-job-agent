@@ -5,15 +5,13 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from hope_job_agent.config import get_settings
+from hope_job_agent.config import SourceSettings, get_settings
 from hope_job_agent.evaluation.evaluate import evaluate_fixture
 from hope_job_agent.models.student import StudentProfile
 from hope_job_agent.pipeline.runner import run_pipeline
-from hope_job_agent.sources.approved_json import (
-    ApprovedJsonJobSource,
-    ApprovedJsonSourceError,
-)
-from hope_job_agent.sources.registry import SourceComplianceError
+from hope_job_agent.sources.approved_json import ApprovedJsonSourceError
+from hope_job_agent.sources.ksbit_export import KsbitExportSourceError
+from hope_job_agent.sources.registry import SourceComplianceError, create_source_adapter
 
 
 def _print_smoke_status() -> None:
@@ -38,31 +36,53 @@ def _sample_profiles() -> list[StudentProfile]:
     ]
 
 
-def _run_pipeline_command(source_file: Path | None, output_file: Path | None) -> None:
+def _run_pipeline_command(
+    source_name: str,
+    source_file: Path | None,
+    output_file: Path | None,
+    source_since_date: str | None,
+    source_limit: int | None,
+) -> None:
     """Run the approved-source thin-slice pipeline and print a concise summary."""
 
     settings = get_settings()
-    export_path = source_file or settings.sources.approved_jobs_path
+    export_path = source_file or _default_source_file(source_name, settings.sources)
     output_path = output_file or Path("data/output/pipeline_results.json")
-    source = ApprovedJsonJobSource(export_path)
 
     try:
+        source = create_source_adapter(
+            source_name,
+            export_path,
+            source_since_date=source_since_date,
+            source_limit=source_limit,
+        )
         result = run_pipeline(
             [source],
             student_profiles=_sample_profiles(),
             output_path=output_path,
         )
-    except (ApprovedJsonSourceError, SourceComplianceError) as exc:
+    except (
+        ApprovedJsonSourceError,
+        KsbitExportSourceError,
+        SourceComplianceError,
+    ) as exc:
         print(f"Pipeline failed: {exc}", file=sys.stderr)
         raise SystemExit(1) from exc
 
     print("Pipeline run complete")
+    print(f"Source: {source_name}")
     print(f"Source file: {export_path}")
     print(f"Raw jobs: {result.raw_count}")
     print(f"Valid jobs: {result.valid_count}")
     print(f"Invalid jobs: {result.invalid_count}")
     print(f"Deduplicated jobs: {result.deduplicated_count}")
     print(f"Output file: {result.output_path}")
+
+
+def _default_source_file(source_name: str, source_settings: SourceSettings) -> Path:
+    if source_name == "ksbit_export":
+        return source_settings.ksbit_export_path
+    return source_settings.approved_jobs_path
 
 
 def _run_evaluation_command(dataset_file: Path | None) -> None:
@@ -84,19 +104,35 @@ def _build_parser() -> argparse.ArgumentParser:
 
     run_parser = subparsers.add_parser(
         "run-pipeline",
-        help="Run the approved-source ingestion pipeline against a local JSON export.",
+        help="Run the approved-source ingestion pipeline against a local export.",
+    )
+    run_parser.add_argument(
+        "--source",
+        default="approved_json",
+        help="Approved source adapter name. Defaults to approved_json.",
     )
     run_parser.add_argument(
         "--source-file",
         type=Path,
         default=None,
-        help="Path to an approved local JSON job export.",
+        help="Path to an approved local job export.",
     )
     run_parser.add_argument(
         "--output-file",
         type=Path,
         default=None,
         help="Path for the pipeline JSON report.",
+    )
+    run_parser.add_argument(
+        "--source-since-date",
+        default=None,
+        help="For ksbit_export, include records posted on or after YYYY-MM-DD.",
+    )
+    run_parser.add_argument(
+        "--source-limit",
+        type=int,
+        default=None,
+        help="For ksbit_export, maximum source records returned after filtering.",
     )
 
     eval_parser = subparsers.add_parser(
@@ -125,7 +161,13 @@ def main(argv: Sequence[str] | None = None) -> None:
     namespace = parser.parse_args(args)
 
     if namespace.command == "run-pipeline":
-        _run_pipeline_command(namespace.source_file, namespace.output_file)
+        _run_pipeline_command(
+            namespace.source,
+            namespace.source_file,
+            namespace.output_file,
+            namespace.source_since_date,
+            namespace.source_limit,
+        )
         return
 
     if namespace.command == "evaluate":

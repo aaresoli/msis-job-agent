@@ -53,7 +53,18 @@ def test_gold_job_postings_cover_core_msis_labels():
         "Software Engineer",
         "Other",
     }
-    assert {label.concentration for label in labels} == set(MSIS_CONCENTRATIONS)
+    gold_concentrations = {label.concentration for label in labels}
+    # Every gold label must be a valid official concentration.
+    assert gold_concentrations <= set(MSIS_CONCENTRATIONS)
+    # The four established tracks have real labeled postings. "Digital Platforms
+    # and Security" is newly added and has no real public gold example yet;
+    # fabricating one would undermine the "real postings" gold set.
+    assert gold_concentrations >= {
+        "Data Analytics and AI",
+        "Cybersecurity and Risk Analytics",
+        "Digital Enterprise Systems and AI",
+        "IS Research",
+    }
     assert {label.role_fit for label in labels} >= {"strong", "moderate", "weak"}
     assert {label.concentration_fit for label in labels} >= {
         "strong",

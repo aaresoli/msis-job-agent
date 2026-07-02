@@ -1,11 +1,28 @@
-"""MSIS role and concentration taxonomy used for v0 job classification."""
+"""MSIS role and concentration taxonomy used for v0 job classification.
+
+The concentration names below are the five official Kelley MSIS concentrations.
+Legacy names from earlier sprints are preserved in
+``LEGACY_CONCENTRATION_ALIASES`` so previously tagged source data and profiles
+still classify into the current tracks without a data migration.
+"""
 
 MSIS_CONCENTRATIONS = [
-    "Digital Transformation with AI",
     "Data Analytics and AI",
-    "Cybersecurity",
-    "Information Systems Research in AI",
+    "Cybersecurity and Risk Analytics",
+    "Digital Enterprise Systems and AI",
+    "Digital Platforms and Security",
+    "IS Research",
 ]
+
+# Short program codes for compact GCS-facing display. Full names remain the
+# canonical tag values so outputs stay explainable without a lookup.
+CONCENTRATION_CODES = {
+    "Data Analytics and AI": "DA & AI",
+    "Cybersecurity and Risk Analytics": "CRA",
+    "Digital Enterprise Systems and AI": "DES & AI",
+    "Digital Platforms and Security": "DPS",
+    "IS Research": "ISR",
+}
 
 MSIS_TARGET_ROLES = [
     "IT Consultant / Tech Risk",
@@ -16,25 +33,35 @@ MSIS_TARGET_ROLES = [
     "Other",
 ]
 
+# Maps historical/alternate concentration names onto the current five tracks.
+# Keys include both prior sprint names and the four legacy canonical names so
+# older exports, fixtures, and profiles keep classifying correctly.
 LEGACY_CONCENTRATION_ALIASES = {
     "Business Analytics": "Data Analytics and AI",
-    "Digital Enterprise Systems": "Digital Transformation with AI",
-    "Enterprise Systems": "Digital Transformation with AI",
-    "IT Strategy / Consulting": "Digital Transformation with AI",
+    "Data Analytics": "Data Analytics and AI",
+    "Cybersecurity": "Cybersecurity and Risk Analytics",
+    "Cyber Security": "Cybersecurity and Risk Analytics",
+    "Digital Transformation with AI": "Digital Enterprise Systems and AI",
+    "Digital Enterprise Systems": "Digital Enterprise Systems and AI",
+    "Enterprise Systems": "Digital Enterprise Systems and AI",
+    "IT Strategy / Consulting": "Digital Enterprise Systems and AI",
+    "Information Systems Research in AI": "IS Research",
+    "Information Systems Research": "IS Research",
+    "IS Research in AI": "IS Research",
 }
 
 ROLE_TO_CONCENTRATIONS = {
     "IT Consultant / Tech Risk": [
-        "Digital Transformation with AI",
-        "Cybersecurity",
+        "Digital Enterprise Systems and AI",
+        "Cybersecurity and Risk Analytics",
     ],
     "Data Analyst / BI Engineer": [
         "Data Analytics and AI",
-        "Information Systems Research in AI",
+        "IS Research",
     ],
-    "Cybersecurity Analyst": ["Cybersecurity"],
-    "Product / Project Manager": ["Digital Transformation with AI"],
-    "Software Engineer": ["Digital Transformation with AI"],
+    "Cybersecurity Analyst": ["Cybersecurity and Risk Analytics"],
+    "Product / Project Manager": ["Digital Enterprise Systems and AI"],
+    "Software Engineer": ["Digital Enterprise Systems and AI"],
     "Other": [],
 }
 
@@ -127,7 +154,34 @@ ROLE_KEYWORDS = {
 }
 
 CONCENTRATION_KEYWORDS = {
-    "Digital Transformation with AI": [
+    "Data Analytics and AI": [
+        "data analytics",
+        "analytics",
+        "business intelligence",
+        "machine learning",
+        "ai",
+        "sql",
+        "python",
+        "tableau",
+        "power bi",
+        "dashboard",
+        "forecasting",
+    ],
+    "Cybersecurity and Risk Analytics": [
+        "cybersecurity",
+        "security",
+        "risk management",
+        "risk analytics",
+        "operational risk",
+        "fraud analytics",
+        "threat",
+        "vulnerability",
+        "siem",
+        "nist",
+        "grc",
+        "incident response",
+    ],
+    "Digital Enterprise Systems and AI": [
         "digital transformation",
         "ai transformation",
         "automation",
@@ -147,31 +201,30 @@ CONCENTRATION_KEYWORDS = {
         "saas",
         "systems integration",
     ],
-    "Data Analytics and AI": [
-        "data analytics",
-        "analytics",
-        "business intelligence",
-        "machine learning",
-        "ai",
-        "sql",
-        "python",
-        "tableau",
-        "power bi",
-        "dashboard",
-        "forecasting",
+    "Digital Platforms and Security": [
+        "platform engineering",
+        "platform security",
+        "digital platform",
+        "identity and access",
+        "identity management",
+        "iam",
+        "zero trust",
+        "devsecops",
+        "secure sdlc",
+        "security engineering",
+        "application security",
+        "appsec",
+        "api security",
+        "cloud security",
+        "container security",
+        "kubernetes",
+        "site reliability",
+        "network security",
+        "endpoint security",
+        "iot",
+        "secure architecture",
     ],
-    "Cybersecurity": [
-        "cybersecurity",
-        "security",
-        "risk management",
-        "threat",
-        "vulnerability",
-        "siem",
-        "nist",
-        "grc",
-        "incident response",
-    ],
-    "Information Systems Research in AI": [
+    "IS Research": [
         "research",
         "research analyst",
         "nlp",

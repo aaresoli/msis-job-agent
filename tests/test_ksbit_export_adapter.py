@@ -629,8 +629,7 @@ def test_ksbit_export_skips_xlsx_rows_with_empty_required_cells(tmp_path):
         for warning in result.warnings
     )
     assert any(
-        "missing required field(s): apply_url" in warning
-        for warning in result.warnings
+        "missing required field(s): apply_url" in warning for warning in result.warnings
     )
 
 

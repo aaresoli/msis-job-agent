@@ -68,7 +68,7 @@
     "manual_labels": {
       "primary_role": "Cybersecurity Analyst",
       "role_fit": "strong",
-      "concentration": "Cybersecurity",
+      "concentration": "Cybersecurity and Risk Analytics",
       "concentration_fit": "strong",
       "seniority": "internship",
       "relevance": "high"
@@ -87,7 +87,7 @@
     "manual_labels": {
       "primary_role": "Cybersecurity Analyst",
       "role_fit": "strong",
-      "concentration": "Cybersecurity",
+      "concentration": "Cybersecurity and Risk Analytics",
       "concentration_fit": "strong",
       "seniority": "internship",
       "relevance": "high"
@@ -106,7 +106,7 @@
     "manual_labels": {
       "primary_role": "IT Consultant / Tech Risk",
       "role_fit": "strong",
-      "concentration": "Cybersecurity",
+      "concentration": "Cybersecurity and Risk Analytics",
       "concentration_fit": "strong",
       "seniority": "mid_level",
       "relevance": "medium"
@@ -125,7 +125,7 @@
     "manual_labels": {
       "primary_role": "IT Consultant / Tech Risk",
       "role_fit": "strong",
-      "concentration": "Cybersecurity",
+      "concentration": "Cybersecurity and Risk Analytics",
       "concentration_fit": "strong",
       "seniority": "internship",
       "relevance": "high"
@@ -144,7 +144,7 @@
     "manual_labels": {
       "primary_role": "Product / Project Manager",
       "role_fit": "strong",
-      "concentration": "Digital Transformation with AI",
+      "concentration": "Digital Enterprise Systems and AI",
       "concentration_fit": "strong",
       "seniority": "internship",
       "relevance": "high"
@@ -163,7 +163,7 @@
     "manual_labels": {
       "primary_role": "Product / Project Manager",
       "role_fit": "strong",
-      "concentration": "Digital Transformation with AI",
+      "concentration": "Digital Enterprise Systems and AI",
       "concentration_fit": "strong",
       "seniority": "internship",
       "relevance": "high"
@@ -182,7 +182,7 @@
     "manual_labels": {
       "primary_role": "Software Engineer",
       "role_fit": "strong",
-      "concentration": "Digital Transformation with AI",
+      "concentration": "Digital Enterprise Systems and AI",
       "concentration_fit": "strong",
       "seniority": "internship",
       "relevance": "high"
@@ -201,7 +201,7 @@
     "manual_labels": {
       "primary_role": "Other",
       "role_fit": "moderate",
-      "concentration": "Information Systems Research in AI",
+      "concentration": "IS Research",
       "concentration_fit": "strong",
       "seniority": "internship",
       "relevance": "medium"
@@ -220,7 +220,7 @@
     "manual_labels": {
       "primary_role": "Other",
       "role_fit": "weak",
-      "concentration": "Digital Transformation with AI",
+      "concentration": "Digital Enterprise Systems and AI",
       "concentration_fit": "weak",
       "seniority": "internship",
       "relevance": "low"

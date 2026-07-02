@@ -17,7 +17,7 @@ class EmployerCareersSource(BaseJobSource):
     source_name = "employer_careers"
 
     def fetch_jobs(self) -> list[JobPosting]:
-        """Return one sample posting for each MSIS concentration track."""
+        """Return sample postings spanning several MSIS concentration tracks."""
 
         return [
             JobPosting(
@@ -31,7 +31,7 @@ class EmployerCareersSource(BaseJobSource):
                 ),
                 url="https://careers.example.com/northstar/data-analyst-intern",
                 posted_date=date(2026, 6, 1),
-                concentration_tags=["Business Analytics"],
+                concentration_tags=["Data Analytics and AI"],
                 opt_cpt_flag=True,
             ),
             JobPosting(
@@ -45,7 +45,7 @@ class EmployerCareersSource(BaseJobSource):
                 ),
                 url="https://careers.example.com/summit/cybersecurity-risk-intern",
                 posted_date=date(2026, 5, 29),
-                concentration_tags=["Cybersecurity"],
+                concentration_tags=["Cybersecurity and Risk Analytics"],
                 opt_cpt_flag=True,
             ),
             JobPosting(
@@ -62,7 +62,7 @@ class EmployerCareersSource(BaseJobSource):
                     "digital-transformation-analyst-intern"
                 ),
                 posted_date=date(2026, 5, 28),
-                concentration_tags=["Digital Enterprise Systems"],
+                concentration_tags=["Digital Enterprise Systems and AI"],
                 opt_cpt_flag=True,
             ),
             JobPosting(
@@ -76,7 +76,7 @@ class EmployerCareersSource(BaseJobSource):
                 ),
                 url="https://careers.example.com/lakeshore/enterprise-systems-analyst",
                 posted_date=date(2026, 5, 27),
-                concentration_tags=["Enterprise Systems"],
+                concentration_tags=["Digital Platforms and Security"],
                 opt_cpt_flag=None,
             ),
             JobPosting(
@@ -93,7 +93,7 @@ class EmployerCareersSource(BaseJobSource):
                     "technology-strategy-consulting-intern"
                 ),
                 posted_date=date(2026, 5, 25),
-                concentration_tags=["IT Strategy / Consulting"],
+                concentration_tags=["IS Research"],
                 opt_cpt_flag=True,
             ),
         ]

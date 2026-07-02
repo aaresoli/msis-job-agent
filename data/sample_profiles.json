@@ -19,7 +19,7 @@
     {
       "student_id": "msis-002",
       "name": "Jordan Hayes",
-      "concentration": "Cybersecurity",
+      "concentration": "Cybersecurity and Risk Analytics",
       "academic_stage": "Incoming student (Fall)",
       "target_roles": ["Cybersecurity Analyst", "IT Consultant / Tech Risk"],
       "skills": ["SIEM", "NIST", "Python", "Risk Management", "Splunk"],
@@ -36,7 +36,7 @@
     {
       "student_id": "msis-003",
       "name": "Matthew Davis",
-      "concentration": "Digital Transformation with AI",
+      "concentration": "Digital Enterprise Systems and AI",
       "academic_stage": "Returning / finishing up",
       "target_roles": ["Chief AI Officer", "Business Analyst", "AI Compliance Officer"],
       "skills": ["R Studio", "SQL", "Tableau", "Public Policy", "Excel"],
@@ -52,7 +52,7 @@
     {
       "student_id": "msis-004",
       "name": "Anna Stevens",
-      "concentration": "Information Systems Research in AI",
+      "concentration": "IS Research",
       "academic_stage": "Incoming student (Fall)",
       "target_roles": ["AI Engineer", "AI / Data Architect"],
       "skills": ["Python", "R Studio", "SQL", "Excel"],

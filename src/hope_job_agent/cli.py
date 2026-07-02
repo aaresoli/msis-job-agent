@@ -7,6 +7,11 @@ from pathlib import Path
 
 from hope_job_agent.config import SourceSettings, get_settings
 from hope_job_agent.evaluation.evaluate import evaluate_fixture
+from hope_job_agent.evaluation.metrics import (
+    evaluate_fixture_dataset,
+    evaluate_gold_dataset,
+    format_report_text,
+)
 from hope_job_agent.models.student import StudentProfile
 from hope_job_agent.pipeline.runner import run_pipeline
 from hope_job_agent.sources.approved_json import ApprovedJsonSourceError
@@ -96,6 +101,19 @@ def _run_evaluation_command(dataset_file: Path | None) -> None:
     print(f"Ranking relevance@3: {report.ranking_relevance_at_3:.2f}")
 
 
+def _run_taxonomy_evaluation_command(dataset: str) -> None:
+    reports = []
+    if dataset in {"gold", "all"}:
+        reports.append(evaluate_gold_dataset())
+    if dataset in {"fixture", "all"}:
+        reports.append(evaluate_fixture_dataset())
+
+    print("Taxonomy calibration report")
+    for report in reports:
+        print("")
+        print(format_report_text(report))
+
+
 def _build_parser() -> argparse.ArgumentParser:
     """Build the CLI argument parser."""
 
@@ -146,6 +164,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to labelled evaluation data.",
     )
 
+    taxonomy_parser = subparsers.add_parser(
+        "evaluate-taxonomy",
+        help="Report per-class precision/recall/F1 for the classifier taxonomy.",
+    )
+    taxonomy_parser.add_argument(
+        "--dataset",
+        choices=("gold", "fixture", "all"),
+        default="all",
+        help="Which labeled dataset(s) to score. Defaults to all.",
+    )
+
     return parser
 
 
@@ -172,6 +201,10 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if namespace.command == "evaluate":
         _run_evaluation_command(namespace.dataset_file)
+        return
+
+    if namespace.command == "evaluate-taxonomy":
+        _run_taxonomy_evaluation_command(namespace.dataset)
         return
 
     parser.print_help()

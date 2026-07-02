@@ -198,7 +198,3 @@ def _merge_scores(
     for tag, score in second.items():
         merged[tag] = max(merged.get(tag, 0.0), score)
     return merged
-
-
-def _dedupe(values: list[str]) -> list[str]:
-    return list(dict.fromkeys(values))

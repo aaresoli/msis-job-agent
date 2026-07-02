@@ -19,7 +19,7 @@
       "posted_date": "2026-05-20",
       "employment_type": "Internship",
       "seniority": "Entry",
-      "concentration_tags": ["Business Analytics"],
+      "concentration_tags": ["Data Analytics and AI"],
       "opt_cpt_flag": true
     },
     {
@@ -32,7 +32,7 @@
       "posted_date": "2026-05-20",
       "employment_type": "Internship",
       "seniority": "Entry",
-      "concentration_tags": ["Business Analytics"],
+      "concentration_tags": ["Data Analytics and AI"],
       "opt_cpt_flag": true
     },
     {
@@ -45,7 +45,7 @@
       "posted_date": "2026-05-22",
       "employment_type": "Internship",
       "seniority": "Entry",
-      "concentration_tags": ["Cybersecurity"],
+      "concentration_tags": ["Cybersecurity and Risk Analytics"],
       "opt_cpt_flag": true
     },
     {
@@ -58,7 +58,7 @@
       "posted_date": "2026-05-25",
       "employment_type": "Full-time",
       "seniority": "Early/Mid",
-      "concentration_tags": ["Enterprise Systems"],
+      "concentration_tags": ["Digital Enterprise Systems and AI"],
       "opt_cpt_flag": null
     },
     {
@@ -71,7 +71,7 @@
       "posted_date": "2026-05-25",
       "employment_type": "Full-time",
       "seniority": "Early/Mid",
-      "concentration_tags": ["Information Systems Research in AI"],
+      "concentration_tags": ["IS Research"],
       "opt_cpt_flag": null
     },
     {
@@ -84,7 +84,7 @@
       "posted_date": "2026-05-25",
       "employment_type": "Full-time",
       "seniority": "Mid",
-      "concentration_tags": ["Information Systems Research in AI"],
+      "concentration_tags": ["IS Research"],
       "opt_cpt_flag": true
     }
   ]

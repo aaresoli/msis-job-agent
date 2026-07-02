@@ -26,7 +26,7 @@ def test_classifies_data_analytics_and_bi_role():
     assert classification.role_confidence_scores["Data Analyst / BI Engineer"] > 0.8
     assert classification.concentration_tags == [
         "Data Analytics and AI",
-        "Information Systems Research in AI",
+        "IS Research",
     ]
     assert classification.is_uncertain is False
 
@@ -44,11 +44,16 @@ def test_classifies_cybersecurity_and_tech_risk_roles():
         "Cybersecurity Analyst",
     ]
     assert classification.concentration_tags == [
-        "Digital Transformation with AI",
-        "Cybersecurity",
+        "Cybersecurity and Risk Analytics",
+        "Digital Enterprise Systems and AI",
     ]
     assert classification.role_confidence_scores["IT Consultant / Tech Risk"] >= 0.5
-    assert classification.concentration_confidence_scores["Cybersecurity"] >= 0.5
+    assert (
+        classification.concentration_confidence_scores[
+            "Cybersecurity and Risk Analytics"
+        ]
+        >= 0.5
+    )
 
 
 def test_classifies_digital_transformation_software_and_pm_signals():
@@ -63,7 +68,52 @@ def test_classifies_digital_transformation_software_and_pm_signals():
         "Product / Project Manager",
         "Software Engineer",
     ]
-    assert classification.concentration_tags == ["Digital Transformation with AI"]
+    assert classification.concentration_tags == ["Digital Enterprise Systems and AI"]
+
+
+def test_classifies_digital_platforms_and_security_role():
+    classification = classify_job(
+        _job(
+            "Platform Security Engineer Intern",
+            "Support secure cloud platform engineering with IAM, zero trust "
+            "access, DevSecOps pipelines, Kubernetes hardening, and API security "
+            "reviews.",
+        )
+    )
+
+    assert "Digital Platforms and Security" in classification.concentration_tags
+    assert (
+        classification.concentration_confidence_scores["Digital Platforms and Security"]
+        >= 0.5
+    )
+
+
+def test_digital_platforms_and_security_from_trusted_source_tag():
+    classification = classify_job(
+        _job(
+            "Identity Platform Engineer",
+            "Operate resilient identity and access systems with on-call rotations.",
+            concentration_tags=["Digital Platforms and Security"],
+        )
+    )
+
+    assert classification.concentration_tags == ["Digital Platforms and Security"]
+    assert (
+        classification.concentration_confidence_scores["Digital Platforms and Security"]
+        == 1.0
+    )
+
+
+def test_plain_enterprise_role_does_not_become_digital_platforms_and_security():
+    classification = classify_job(
+        _job(
+            "ERP Systems Analyst",
+            "Improve ERP workflows, reporting, and enterprise automation for "
+            "operations teams.",
+        )
+    )
+
+    assert "Digital Platforms and Security" not in classification.concentration_tags
 
 
 def test_normalizes_legacy_concentration_tags():
@@ -77,7 +127,7 @@ def test_normalizes_legacy_concentration_tags():
 
     assert classification.concentration_tags == [
         "Data Analytics and AI",
-        "Digital Transformation with AI",
+        "Digital Enterprise Systems and AI",
     ]
 
 
@@ -93,9 +143,12 @@ def test_classify_job_posting_returns_tagged_copy_without_mutating_original():
     assert job.concentration_tags == []
     assert job.opt_cpt_flag is None
     assert tagged_job.role_tags == ["Cybersecurity Analyst"]
-    assert tagged_job.concentration_tags == ["Cybersecurity"]
+    assert tagged_job.concentration_tags == ["Cybersecurity and Risk Analytics"]
     assert tagged_job.role_confidence_scores["Cybersecurity Analyst"] >= 0.5
-    assert tagged_job.concentration_confidence_scores["Cybersecurity"] >= 0.5
+    assert (
+        tagged_job.concentration_confidence_scores["Cybersecurity and Risk Analytics"]
+        >= 0.5
+    )
     assert tagged_job.classification_uncertain is False
     assert tagged_job.opt_cpt_flag is True
 
@@ -141,7 +194,7 @@ def test_trusted_source_tags_receive_full_confidence():
     assert classification.role_tags == ["Product / Project Manager"]
     assert classification.concentration_tags == [
         "Data Analytics and AI",
-        "Digital Transformation with AI",
+        "Digital Enterprise Systems and AI",
     ]
     assert classification.role_confidence_scores["Product / Project Manager"] == 1.0
     assert (

@@ -2,6 +2,7 @@
   "skill_match": 2.0,
   "target_role_match": 3.0,
   "concentration_match": 2.0,
+  "location_match": 1.0,
   "opt_cpt_match": 1.0,
   "seniority_match": 1.0,
   "seniority_mismatch_penalty": -1.0

@@ -73,7 +73,7 @@ def test_run_pipeline_normalizes_validates_classifies_and_deduplicates(tmp_path)
     assert result.final_jobs[0].role_tags == ["Data Analyst / BI Engineer"]
     assert result.final_jobs[0].concentration_tags == [
         "Data Analytics and AI",
-        "Information Systems Research in AI",
+        "IS Research",
     ]
 
 

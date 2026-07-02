@@ -4,10 +4,12 @@ import json
 import re
 from dataclasses import dataclass, fields
 from pathlib import Path
+from typing import Any
 
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.match import JobMatch
 from hope_job_agent.models.student import StudentProfile
+from hope_job_agent.scoring.locations import resolve_location_match
 
 RANKER_VERSION = "deterministic-v0"
 DEFAULT_RANKING_WEIGHTS_PATH = (
@@ -22,6 +24,7 @@ class RankingWeights:
     skill_match: float = 2.0
     target_role_match: float = 3.0
     concentration_match: float = 2.0
+    location_match: float = 1.0
     opt_cpt_match: float = 1.0
     seniority_match: float = 1.0
     seniority_mismatch_penalty: float = -1.0
@@ -109,25 +112,31 @@ def explain_job_score(
     student: StudentProfile,
     job: JobPosting,
     weights: RankingWeights = DEFAULT_RANKING_WEIGHTS,
-) -> tuple[float, list[str], dict[str, str]]:
-    """Return an explainable score tuple for one student-job pair."""
+) -> tuple[float, list[str], dict[str, Any]]:
+    """Return an explainable score tuple for one student-job pair.
+
+    The ``reasons`` list is human-readable only. The numeric per-signal
+    contribution is returned separately under ``metadata["score_breakdown"]``
+    so downstream outputs can show an interpretable rubric without mixing the
+    two.
+    """
 
     searchable_text = f"{job.title} {job.description}".lower()
     score = 0.0
-    individual_scores = {
-        "Skill Score": 0.0,
-        "Role Score": 0.0,
-        "Concentration Score": 0.0,
-        "OPT/CPT Score": 0.0,
-        "Seniority Match Score": 0.0,
-        "Seniority Mismatch Score": 0.0,
+    breakdown = {
+        "skill": 0.0,
+        "target_role": 0.0,
+        "concentration": 0.0,
+        "location": 0.0,
+        "opt_cpt": 0.0,
+        "seniority": 0.0,
     }
     reasons: list[str] = []
 
     for skill in _normalize_terms(student.skills):
         if _contains_term(searchable_text, skill):
             score += weights.skill_match
-            individual_scores["Skill Score"] += weights.skill_match
+            breakdown["skill"] += weights.skill_match
             reasons.append(f"Skill match: {skill}")
 
     for role in _normalize_terms(student.target_roles):
@@ -135,34 +144,79 @@ def explain_job_score(
             tag.casefold() for tag in job.role_tags
         ]:
             score += weights.target_role_match
-            individual_scores["Role Score"] += weights.target_role_match
+            breakdown["target_role"] += weights.target_role_match
             reasons.append(f"Target role match: {role}")
 
     if student.concentration in job.concentration_tags:
         score += weights.concentration_match
-        individual_scores["Concentration Score"] += weights.concentration_match
+        breakdown["concentration"] += weights.concentration_match
         reasons.append(f"Concentration match: {student.concentration}")
+
+    location_matched, location_reason = _location_signal(student, job)
+    if location_matched and location_reason is not None:
+        score += weights.location_match
+        breakdown["location"] += weights.location_match
+        reasons.append(location_reason)
 
     if student.needs_cpt_opt and job.opt_cpt_flag is True:
         score += weights.opt_cpt_match
-        individual_scores["OPT/CPT Score"] += weights.opt_cpt_match
+        breakdown["opt_cpt"] += weights.opt_cpt_match
         reasons.append("CPT/OPT-friendly signal")
 
     seniority_label = job.seniority or infer_seniority(job)
     preferred_seniority = _preferred_seniority(student)
     if preferred_seniority and seniority_label == preferred_seniority:
         score += weights.seniority_match
-        individual_scores["Seniority Match Score"] += weights.seniority_match
+        breakdown["seniority"] += weights.seniority_match
         reasons.append(f"Seniority match: {seniority_label}")
     elif preferred_seniority and seniority_label:
         score += weights.seniority_mismatch_penalty
-        individual_scores["Seniority Mismatch Score"] += weights.seniority_mismatch_penalty
+        breakdown["seniority"] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
-    for label, value in individual_scores.items():
-        reasons.append(f"{label}: {value}")
+    metadata: dict[str, Any] = {
+        "seniority": seniority_label,
+        "score_breakdown": breakdown,
+    }
+    return score, reasons, metadata
 
-    return score, reasons, {"seniority": seniority_label}
+
+def _is_remote_friendly(remote_preference: str | None) -> bool:
+    """Return whether a student is open to remote/online/hybrid work."""
+
+    if not remote_preference:
+        return False
+    normalized = remote_preference.casefold()
+    return any(term in normalized for term in ("remote", "online", "hybrid"))
+
+
+def _location_signal(
+    student: StudentProfile,
+    job: JobPosting,
+) -> tuple[bool, str | None]:
+    """Award a location signal only when it can be known confidently.
+
+    Returns a positive match for a remote-friendly student and a remote role,
+    or for a geo-preference term (expanded via nicknames/regions in
+    ``scoring.locations``) that appears in the posting location. Unknown
+    locations and unset preferences never score, so unknown data is not treated
+    as a match or a penalty.
+    """
+
+    location = job.location.strip()
+    if not location or location.casefold() == "not specified":
+        return False, None
+
+    if "remote" in location.casefold() and _is_remote_friendly(
+        student.remote_preference
+    ):
+        return True, "Remote-friendly role matches remote preference"
+
+    matched_term = resolve_location_match(location, student.geo_preference)
+    if matched_term is not None:
+        return True, f"Location match: {matched_term}"
+
+    return False, None
 
 
 def infer_seniority(job: JobPosting) -> str:

@@ -69,7 +69,7 @@ def _write_profiles(path):
                     {
                         "student_id": "student-002",
                         "name": "Security Student",
-                        "concentration": "Cybersecurity",
+                        "concentration": "Cybersecurity and Risk Analytics",
                         "academic_stage": "Incoming student (Fall)",
                         "target_roles": ["Cybersecurity Analyst"],
                         "skills": ["SIEM", "NIST"],
@@ -363,7 +363,9 @@ def test_mvp_runner_preflights_database_before_writing_outputs(tmp_path):
     _write_jobs(jobs_path, [_data_job()])
     _write_profiles(profiles_path)
 
-    with pytest.raises(MvpPipelineError, match="Only empty DATABASE_URL"):
+    with pytest.raises(
+        MvpPipelineError, match="PostgreSQL persistence is not implemented"
+    ):
         run_mvp_pipeline(
             source_name="approved_json",
             input_path=jobs_path,

@@ -69,6 +69,21 @@ SOURCE_REGISTRY: dict[str, SourceMetadata] = {
             "application/applicant analytics fields."
         ),
     ),
+    "kelleylink_excel": SourceMetadata(
+        name="kelleylink_excel",
+        display_name="KelleyLink / 12Twenty Excel Export",
+        status=SourceStatus.APPROVED,
+        source_type="local_export",
+        access_method=(
+            "Approved local 12Twenty/KelleyLink JSON/CSV/XLSX export only; no "
+            "live collection, credentials, or browser automation."
+        ),
+        priority=3,
+        notes=(
+            "Friendly alias of ksbit_export for the KelleyLink/12Twenty demo "
+            "command. Uses the identical local-export adapter."
+        ),
+    ),
     "handshake": SourceMetadata(
         name="handshake",
         display_name="Handshake",
@@ -135,7 +150,7 @@ def create_source_adapter(
 
         return ApprovedJsonJobSource(input_path)
 
-    if source_name == "ksbit_export":
+    if source_name in {"ksbit_export", "kelleylink_excel"}:
         from hope_job_agent.sources.ksbit_export import KsbitExportSource
 
         return KsbitExportSource(
@@ -147,5 +162,5 @@ def create_source_adapter(
     raise SourceComplianceError(
         f"Source '{source_name}' is registered but cannot be constructed from a "
         "local input file by this pipeline. Supported local sources: "
-        "approved_json, ksbit_export."
+        "approved_json, ksbit_export, kelleylink_excel."
     )

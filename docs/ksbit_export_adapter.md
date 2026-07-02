@@ -8,6 +8,20 @@ deduplication, classification, ranking, and MVP export.
 This is a local-export adapter only. It does not scrape pages, automate
 browsers, log in to KSBIT, bypass CAPTCHA, use proxies, or require credentials.
 
+## Adapter Name And Alias
+
+The adapter is registered as `ksbit_export`. `kelleylink_excel` is an approved
+alias that constructs the identical adapter; use whichever name reads best for a
+given demo. Both accept `.json`, `.csv`, and `.xlsx`.
+
+The MVP runner supports a jobs-only mode: omit `--profiles` to emit the
+normalized jobs, a data-quality report, and a GCS trend summary without student
+ranking. For example:
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source kelleylink_excel --input "12Twenty Data Example v1.xlsx" --output outputs/mvp_jobs.csv
+```
+
 ## Example Usage
 
 The top-level CLI can run the adapter directly:
@@ -183,6 +197,27 @@ Runtime settings:
 The source registry marks `ksbit_export` as an approved local export source for
 JSON/CSV/XLSX files only. The approved access method excludes live collection,
 credentials, browser automation, and login/session workflows.
+
+## Committed Synthetic 12Twenty Fixture
+
+The real KelleyLink/12Twenty export contains student PII and cannot be committed.
+`data/sample_12twenty_export.xlsx` is a committed, schema-faithful synthetic
+export that mirrors the real dry-run column layout — JSON `Location` cells
+(`{"CountryName":...,"CityName":"Chicago - IL"}`), `Status` values (open vs.
+closed), work-authorization strings, and the sensitive analytics columns
+(`Application Count`, `Distinct Applicant Count`) the adapter must drop — using
+entirely fabricated data. It deliberately includes edge cases: a closed posting
+(filtered by status), a row missing `Application URL` (skipped with a warning),
+and a row missing `Job Posting ID` (fallback id generation).
+
+Regenerate it with:
+
+```bash
+python scripts/generate_sample_12twenty_xlsx.py
+```
+
+This gives the Excel path deterministic test coverage of real schema variance
+without exposing PII (see `tests/test_12twenty_fixture.py`).
 
 ## Future KSBIT API Path
 

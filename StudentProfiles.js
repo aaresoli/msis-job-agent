@@ -17,10 +17,11 @@
 // Mirror the dropdown options from the Sprint 1 schema document exactly.
 
 export const CONCENTRATION = Object.freeze({
-  DIGITAL_TRANSFORMATION: "Digital Transformation with AI",
   DATA_ANALYTICS:         "Data Analytics and AI",
-  CYBERSECURITY:          "Cybersecurity",
-  IS_RESEARCH:            "Information Systems Research in AI",
+  CYBERSECURITY:          "Cybersecurity and Risk Analytics",
+  DIGITAL_ENTERPRISE:     "Digital Enterprise Systems and AI",
+  DIGITAL_PLATFORMS:      "Digital Platforms and Security",
+  IS_RESEARCH:            "IS Research",
 });
 
 export const ACADEMIC_STAGE = Object.freeze({

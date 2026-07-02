@@ -137,3 +137,13 @@ def test_cli_evaluate_prints_report(capsys):
     assert "Evaluation complete" in captured.out
     assert "Role accuracy:" in captured.out
     assert "Ranking relevance@3:" in captured.out
+
+
+def test_cli_evaluate_taxonomy_prints_per_class_metrics(capsys):
+    main(["evaluate-taxonomy", "--dataset", "fixture"])
+
+    captured = capsys.readouterr()
+    assert "Taxonomy calibration report" in captured.out
+    assert "Concentrations" in captured.out
+    assert "Digital Platforms and Security" in captured.out
+    assert "macro_f1" in captured.out

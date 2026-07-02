@@ -62,8 +62,8 @@ def test_mvp_pipeline_runs_sample_data_to_ranked_output(tmp_path):
         assert scores == sorted(scores, reverse=True)
         for row in student_rows:
             score_breakdown = json.loads(row["score_breakdown"])
-            assert isinstance(score_breakdown["reasons"], list)
-            assert isinstance(score_breakdown["metadata"], dict)
+            assert isinstance(score_breakdown, dict)
+            assert "concentration" in score_breakdown
             assert row["ranking_explanation"]
             assert row["apply_url/post_url"].startswith("https://")
 

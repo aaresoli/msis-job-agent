@@ -32,10 +32,11 @@
       "description": "MSIS concentration. Primary signal for job-category matching.",
       "type": "string",
       "enum": [
-        "Digital Transformation with AI",
         "Data Analytics and AI",
-        "Cybersecurity",
-        "Information Systems Research in AI"
+        "Cybersecurity and Risk Analytics",
+        "Digital Enterprise Systems and AI",
+        "Digital Platforms and Security",
+        "IS Research"
       ],
       "x-group": "Academic Info",
       "x-required": true,

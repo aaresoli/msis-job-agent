@@ -27,6 +27,19 @@ class JobPosting(BaseModel):
     concentration_confidence_scores: dict[str, float] = Field(default_factory=dict)
     classification_uncertain: bool = False
     opt_cpt_flag: bool | None = None
+    # Optional enrichment fields. These stay ``None``/empty for existing
+    # local-export sources and are populated by the company_careers source
+    # family (ATS-backed employer career pages). They are additive and do not
+    # change the required core contract used by KelleyLink/KSBIT ingestion.
+    source_detail: str | None = None
+    apply_url: str | None = None
+    location_type: str | None = None
+    department: str | None = None
+    application_deadline: date | None = None
+    compensation: str | None = None
+    career_stage: str | None = None
+    relevance_score: float | None = None
+    matched_keywords: list[str] = Field(default_factory=list)
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
     retrieved_at: datetime | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

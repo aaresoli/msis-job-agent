@@ -5,11 +5,11 @@ from dataclasses import dataclass
 
 from hope_job_agent.classification.taxonomy import (
     CONCENTRATION_KEYWORDS,
-    LEGACY_CONCENTRATION_ALIASES,
     MSIS_CONCENTRATIONS,
     MSIS_TARGET_ROLES,
     ROLE_KEYWORDS,
     ROLE_TO_CONCENTRATIONS,
+    normalize_concentrations,
 )
 from hope_job_agent.classification.work_authorization import detect_work_authorization
 from hope_job_agent.models.job import JobPosting
@@ -149,13 +149,7 @@ def _contains_keyword(text: str, keyword: str) -> bool:
 
 
 def _normalize_existing_concentrations(tags: list[str]) -> list[str]:
-    normalized = []
-    for tag in tags:
-        if tag in MSIS_CONCENTRATIONS:
-            normalized.append(tag)
-        elif tag in LEGACY_CONCENTRATION_ALIASES:
-            normalized.append(LEGACY_CONCENTRATION_ALIASES[tag])
-    return normalized
+    return normalize_concentrations(tags)
 
 
 def _score_concentrations_for_roles(

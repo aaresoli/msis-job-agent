@@ -12,10 +12,15 @@ authors = [
   { name = "Kelley HOPE MSIS Job Agent Team" }
 ]
 dependencies = [
+  "alembic>=1.13",
   "fastapi>=0.111.0",
   "openpyxl>=3.1",
+  "pgvector>=0.3",
+  "psycopg[binary]>=3.1",
   "pydantic>=2.7.0",
   "pydantic-settings>=2.3.0",
+  "PyYAML>=6.0",
+  "SQLAlchemy>=2.0",
   "uvicorn>=0.30.0"
 ]
 
@@ -50,6 +55,11 @@ ignore = []
 addopts = "-q --capture=sys"
 testpaths = ["tests"]
 pythonpath = ["src"]
+markers = [
+  "unit: fast tests with no external services",
+  "integration: cross-module tests that may touch the local filesystem",
+  "postgres: tests that require a live PostgreSQL instance with pgvector",
+]
 
 [tool.mypy]
 python_version = "3.11"

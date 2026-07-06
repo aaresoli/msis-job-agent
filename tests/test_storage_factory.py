@@ -1,14 +1,18 @@
+"""Tests for storage factory and memory backend."""
+
 import pytest
 
 from hope_job_agent.storage import (
     JobStore,
     JobStoreError,
+    MemoryJobStore,
+    PostgresJobStore,
     SQLiteJobStore,
-    SQLiteJobStoreError,
     create_job_store,
 )
 
 
+@pytest.mark.unit
 def test_create_job_store_returns_sqlite_for_empty_url():
     store = create_job_store("")
     try:
@@ -18,28 +22,53 @@ def test_create_job_store_returns_sqlite_for_empty_url():
         store.close()
 
 
-def test_create_job_store_returns_sqlite_for_memory_url():
-    store = create_job_store("sqlite:///:memory:")
+@pytest.mark.unit
+def test_create_job_store_returns_sqlite_for_memory_storage_mode():
+    store = create_job_store("", storage="sqlite")
     try:
         assert isinstance(store, SQLiteJobStore)
     finally:
         store.close()
 
 
-def test_create_job_store_flags_postgres_as_unimplemented_dropin():
-    with pytest.raises(
-        JobStoreError, match="PostgreSQL persistence is not implemented"
-    ):
-        create_job_store("postgresql://user:pass@localhost:5432/hope")
+@pytest.mark.unit
+def test_create_job_store_returns_memory_store():
+    store = create_job_store("", storage="memory")
+    try:
+        assert isinstance(store, MemoryJobStore)
+    finally:
+        store.close()
 
 
+@pytest.mark.unit
+def test_create_job_store_returns_postgres_for_postgres_url():
+    store = create_job_store(
+        "postgresql+psycopg://hope_user:hope_password@localhost:5432/hope_jobs",
+        storage="postgres",
+    )
+    try:
+        assert isinstance(store, PostgresJobStore)
+    finally:
+        store.close()
+
+
+@pytest.mark.unit
 def test_create_job_store_rejects_unknown_scheme():
     with pytest.raises(JobStoreError, match="Unsupported DATABASE_URL scheme"):
         create_job_store("mysql://localhost/hope")
 
 
-def test_sqlite_error_is_a_job_store_error():
-    assert issubclass(SQLiteJobStoreError, JobStoreError)
+@pytest.mark.unit
+def test_create_job_store_normalizes_postgresql_driver():
+    store = create_job_store(
+        "postgresql://hope_user:hope_password@localhost:5432/hope_jobs",
+        storage="postgres",
+    )
+    try:
+        assert isinstance(store, PostgresJobStore)
+        assert store.database_url.startswith("postgresql+psycopg://")
+    finally:
+        store.close()
 
 
 class _RecordingStore:
@@ -64,6 +93,7 @@ class _RecordingStore:
         self.events.append("close")
 
 
+@pytest.mark.unit
 def test_run_mvp_uses_injected_store_factory(tmp_path):
     from pathlib import Path
 

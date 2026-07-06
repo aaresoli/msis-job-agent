@@ -70,6 +70,103 @@ cp .env.example .env
 
 Never commit real secrets.
 
+## Database Setup (PostgreSQL + pgvector)
+
+Local PostgreSQL uses the pgvector-enabled service in `docker-compose.yml`.
+
+```bash
+docker compose up -d postgres
+cp .env.example .env
+alembic upgrade head
+```
+
+Set persistence explicitly when running the MVP pipeline:
+
+```bash
+# Dry-run without persisting
+python -m hope_job_agent.pipeline.run_mvp \
+  --source kelleylink_excel \
+  --input data/sample_12twenty_export.xlsx \
+  --output outputs/mvp_jobs.csv \
+  --dry-run
+
+# Persist to PostgreSQL
+python -m hope_job_agent.pipeline.run_mvp \
+  --source kelleylink_excel \
+  --input data/sample_12twenty_export.xlsx \
+  --output outputs/mvp_jobs.csv \
+  --storage postgres
+
+# Company careers into PostgreSQL
+python -m hope_job_agent.pipeline.run_mvp \
+  --source company_careers \
+  --output outputs/company_careers/results.json \
+  --storage postgres \
+  --limit 200
+
+# In-memory persistence for tests/demos (no database)
+python -m hope_job_agent.pipeline.run_mvp \
+  --source approved_json \
+  --input data/sample_jobs.json \
+  --output outputs/jobs.csv \
+  --storage memory
+```
+
+Import an existing local export into PostgreSQL:
+
+```bash
+python -m hope_job_agent.db.import_existing_jobs \
+  --input data/sample_ksbit_jobs.json \
+  --source ksbit_export
+```
+
+Useful commands:
+
+```bash
+alembic current
+alembic history
+alembic downgrade -1
+pytest -m unit
+pytest -m postgres   # requires docker postgres + alembic upgrade head
+```
+
+Reset the local database:
+
+```bash
+docker compose down -v
+docker compose up -d postgres
+alembic upgrade head
+```
+
+Environment variables (see `.env.example`):
+
+- `DATABASE_URL` — preferred; example `postgresql+psycopg://hope_user:hope_password@localhost:5432/hope_jobs`
+- `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — used when `DATABASE_URL` is empty
+- `EMBEDDING_DIMENSION` — pgvector column size (default `1536`); changing it requires a new Alembic migration
+
+### How sources connect to PostgreSQL
+
+All approved source adapters still return normalized `JobPosting` objects. The MVP
+runner normalizes, validates, deduplicates, and classifies jobs, then persists
+through the `JobStore` protocol:
+
+- **KelleyLink/KSBIT** (`kelleylink_excel`, `ksbit_export`) — local export adapters; persisted via `JobPostingRepository.upsert_many` and audited in `source_runs`.
+- **Company careers** (`company_careers`) — ATS-backed public boards; same repository path with company rows in `companies`.
+- **Denodo (future)** — planned `ksbit_denodo` adapter behind `BaseJobSource`; will use the same repository layer once the view schema is approved.
+
+pgvector embeddings are optional during ingestion. Jobs persist without
+embeddings; `job_embeddings` is populated by a future embedding step keyed by
+text hash.
+
+Inspect recent ingestion health:
+
+```sql
+SELECT source_name, run_status, started_at, jobs_inserted, jobs_updated, errors_count
+FROM source_runs
+ORDER BY started_at DESC
+LIMIT 20;
+```
+
 ## Run Tests
 
 ```bash
@@ -155,9 +252,9 @@ deliberate proxies; override per run with `--dq-short-description-chars` and
 `--dq-stale-days`, and the thresholds used are recorded in the report.
 
 Persistence goes through the `JobStore` protocol via `create_job_store`. Empty
-and `sqlite://` URLs use the local SQLite backend. A `postgresql://` URL is the
-intended drop-in point for a shared/production backend and currently raises a
-clear "not implemented yet" error rather than silently doing nothing.
+and `sqlite://` URLs use the local SQLite backend. Pass `--storage postgres`
+(or set `DATABASE_URL` to a `postgresql+psycopg://` URL) for shared/production
+PostgreSQL persistence with pgvector-ready schema.
 
 ### Exercising the synthetic 12Twenty Excel export
 
@@ -177,6 +274,34 @@ Additional examples:
 python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.json --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results.csv
 python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.csv --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results_csv.csv
 ```
+
+### Company Careers source (public ATS boards)
+
+`company_careers` fetches MSIS-relevant postings directly from **public**
+employer career pages and public ATS APIs (Greenhouse, Lever, Ashby,
+SmartRecruiters, Workday), filters them for MSIS relevance, and runs them
+through the same pipeline. It is config-driven (`config/company_careers.yml`)
+and runs **independently of Denodo**. Full guide: `docs/company_careers.md`.
+
+```bash
+# company_careers only (jobs-only, dry-run; no files written)
+python -m hope_job_agent.pipeline.run_mvp --source company_careers --limit 200 --dry-run
+
+# company_careers only, writing outputs
+python -m hope_job_agent.pipeline.run_mvp --source company_careers \
+  --company-config config/company_careers.yml \
+  --output outputs/company_careers/results.json --skip-store
+
+# all enabled sources: company_careers + a local export
+python -m hope_job_agent.pipeline.run_mvp --source all \
+  --local-source kelleylink_excel --input data/sample_ksbit_jobs.json \
+  --output outputs/all/results.json --skip-store
+```
+
+The run summary and CLI print a per-company health report
+(fetched/kept/skipped/errors). Compliance: public pages only; no
+LinkedIn/Handshake; no login/CAPTCHA/proxy circumvention; robots.txt respected;
+rate limited; a source that blocks the crawler is disabled automatically.
 
 ## Run Evaluation
 
@@ -276,9 +401,12 @@ Classification uses the five official Kelley MSIS concentrations (defined in
 - Digital Platforms and Security (DPS)
 - IS Research (ISR)
 
-Legacy track names from earlier sprints are mapped onto these five via
+Legacy/shorthand track names (including short codes such as `CRA`/`DPS` and
+values like `ERP`, `SAP`, `Technology Architecture`, `Business Intelligence and
+Analytics`) are normalized onto these five by `normalize_concentration` /
 `LEGACY_CONCENTRATION_ALIASES`, so older exports and profiles still classify
-correctly without a data migration.
+correctly without a data migration. Final classifier output always uses the
+official names. The full alias map is in `docs/company_careers.md`.
 
 ## Adding A New Source Adapter
 
@@ -296,9 +424,9 @@ correctly without a data migration.
   classification, data-quality report, GCS trends, and student matching.
 - Phase 2: `ksbit_denodo` API adapter behind the same `BaseJobSource` contract
   and registry approval once the Denodo view schema is confirmed.
-- Phase 3: durable database persistence beyond local SQLite. The `JobStore`
-  protocol and `create_job_store` factory are already in place so a
-  `PostgresJobStore` is a drop-in; only the concrete backend remains.
+- Phase 3: durable PostgreSQL persistence with pgvector, Alembic migrations, and
+  repository abstractions (`JobPostingRepository`, `SourceRunRepository`, etc.).
+  SQLite and in-memory backends remain for local development and tests.
 - Phase 4: optional LLM enrichment / embeddings as pluggable services.
 - Phase 5: scheduled/automated runs.
 - Phase 6: student- and GCS-facing delivery layer.

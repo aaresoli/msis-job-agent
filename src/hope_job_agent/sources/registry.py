@@ -54,6 +54,24 @@ SOURCE_REGISTRY: dict[str, SourceMetadata] = {
         priority=2,
         notes="Prototype source shape for future ATS/API integrations.",
     ),
+    "company_careers": SourceMetadata(
+        name="company_careers",
+        display_name="Company Careers (Public ATS Job Boards)",
+        status=SourceStatus.APPROVED,
+        source_type="company_careers",
+        access_method=(
+            "Public employer career pages and public ATS APIs only "
+            "(Greenhouse, Lever, Ashby, SmartRecruiters, Workday). Rate limited, "
+            "clear User-Agent, robots.txt respected. No login/CAPTCHA/proxy "
+            "circumvention and no LinkedIn/Handshake collection."
+        ),
+        priority=2,
+        notes=(
+            "Config-driven employer list in config/company_careers.yml. Stores "
+            "provider payloads in raw_metadata; auto-disables sources that block "
+            "the crawler."
+        ),
+    ),
     "ksbit_export": SourceMetadata(
         name="ksbit_export",
         display_name="KSBIT / 12Twenty Local Export",
@@ -159,8 +177,19 @@ def create_source_adapter(
             limit=source_limit,
         )
 
+    if source_name == "company_careers":
+        if source_since_date is not None or source_limit is not None:
+            raise SourceComplianceError(
+                "--source-since-date and --source-limit are only supported for "
+                "ksbit_export"
+            )
+        from hope_job_agent.sources.company_careers import CompanyCareersSource
+
+        # For company_careers the input path is the YAML/JSON company config.
+        return CompanyCareersSource(config_path=input_path)
+
     raise SourceComplianceError(
         f"Source '{source_name}' is registered but cannot be constructed from a "
         "local input file by this pipeline. Supported local sources: "
-        "approved_json, ksbit_export, kelleylink_excel."
+        "approved_json, ksbit_export, kelleylink_excel, company_careers."
     )

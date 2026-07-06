@@ -1,0 +1,5 @@
+{
+  "short_description_chars": 200,
+  "stale_after_days": 90,
+  "example_limit": 10
+}

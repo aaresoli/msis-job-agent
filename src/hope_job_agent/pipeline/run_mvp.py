@@ -37,6 +37,13 @@ from hope_job_agent.sources.approved_json import (
     ApprovedJsonSourceError,
 )
 from hope_job_agent.sources.base import BaseJobSource
+from hope_job_agent.sources.company_careers import CompanyCareersSource
+from hope_job_agent.sources.company_careers.config import (
+    DEFAULT_CONFIG_PATH as DEFAULT_COMPANY_CONFIG_PATH,
+)
+from hope_job_agent.sources.company_careers.config import (
+    CompanyCareersConfigError,
+)
 from hope_job_agent.sources.ksbit_export import (
     KsbitExportSource,
     KsbitExportSourceError,
@@ -97,12 +104,13 @@ class MvpPipelineError(RuntimeError):
 
 @dataclass(frozen=True)
 class SourceLoadResult:
-    """Raw jobs loaded from one approved source."""
+    """Raw jobs loaded from one or more approved sources."""
 
-    source: BaseJobSource
+    source: BaseJobSource | None
     jobs: list[JobPosting]
     raw_count: int
     warnings: list[str]
+    company_health: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -126,16 +134,20 @@ class RankedProfileMatches:
 def run_mvp_pipeline(
     *,
     source_name: str,
-    input_path: Path,
+    input_path: Path | None = None,
     profiles_path: Path | None = None,
     output_path: Path,
     limit: int | None = None,
     source_since_date: str | None = None,
     source_limit: int | None = None,
+    company_config_path: Path | None = None,
+    local_source: str = "kelleylink_excel",
+    company_source: CompanyCareersSource | None = None,
     dry_run: bool = False,
     skip_store: bool = False,
     verbose: bool = False,
     database_url: str | None = None,
+    storage: str = "auto",
     data_quality_thresholds: DataQualityThresholds | None = None,
     store_factory: Callable[[str | None], JobStore] | None = None,
 ) -> MvpPipelineResult:
@@ -161,15 +173,23 @@ def run_mvp_pipeline(
         input_path=input_path,
         source_since_date=source_since_date,
         source_limit=source_limit,
+        company_config_path=company_config_path,
+        local_source=local_source,
+        company_source=company_source,
     )
     warnings.extend(source_load.warnings)
     _log_warnings(source_load.warnings)
 
     if source_load.raw_count == 0:
-        raise MvpPipelineError(f"Input file contains no job records: {input_path}")
+        if input_path is not None:
+            raise MvpPipelineError(f"Input file contains no job records: {input_path}")
+        raise MvpPipelineError(
+            f"Source '{source_name}' returned no job records. Check the "
+            "company_careers health report for skipped/failed companies."
+        )
     if not source_load.jobs:
         raise MvpPipelineError(
-            f"No usable jobs found in input after validation: {input_path}"
+            f"No usable jobs found after validation for source '{source_name}'"
         )
 
     normalized_jobs = _normalize_jobs(source_load.jobs, warnings)
@@ -250,7 +270,8 @@ def run_mvp_pipeline(
         "source": source_name,
         "source_since_date": source_since_date,
         "source_limit": source_limit,
-        "input_path": str(input_path),
+        "company_careers_health": source_load.company_health,
+        "input_path": None if input_path is None else str(input_path),
         "profiles_path": None if profiles_path is None else str(profiles_path),
         "output_path": str(output_path),
         "artifacts": artifacts,
@@ -280,7 +301,9 @@ def run_mvp_pipeline(
 
     if not dry_run:
         store: JobStore | None = None
-        make_store = store_factory or create_job_store
+        make_store = store_factory or (
+            lambda url: create_job_store(url, storage=storage)
+        )
         try:
             if not skip_store:
                 resolved_database_url = (
@@ -333,12 +356,124 @@ def run_mvp_pipeline(
 
 def _load_source(
     source_name: str,
-    input_path: Path,
+    input_path: Path | None,
+    source_since_date: str | None = None,
+    source_limit: int | None = None,
+    company_config_path: Path | None = None,
+    local_source: str = "kelleylink_excel",
+    company_source: CompanyCareersSource | None = None,
+) -> SourceLoadResult:
+    """Load jobs from one or more approved sources.
+
+    Supported ``source_name`` values:
+
+    * ``company_careers``: fetch public ATS boards from the company config.
+    * ``all``: company_careers plus, when ``input_path`` is provided, a local
+      export loaded with ``local_source`` (defaults to ``kelleylink_excel``).
+    * ``approved_json`` / ``ksbit_export`` / ``kelleylink_excel``: local export
+      requiring ``input_path``.
+    """
+
+    if source_name == "company_careers":
+        return _load_company_careers(
+            config_path=company_config_path or input_path,
+            company_source=company_source,
+        )
+
+    if source_name == "all":
+        return _load_all_sources(
+            input_path=input_path,
+            source_since_date=source_since_date,
+            source_limit=source_limit,
+            company_config_path=company_config_path,
+            local_source=local_source,
+            company_source=company_source,
+        )
+
+    return _load_local_source(
+        source_name=source_name,
+        input_path=input_path,
+        source_since_date=source_since_date,
+        source_limit=source_limit,
+    )
+
+
+def _load_company_careers(
+    config_path: Path | None,
+    company_source: CompanyCareersSource | None = None,
+) -> SourceLoadResult:
+    """Fetch and pre-filter public ATS company career postings."""
+
+    LOGGER.info("Loading source adapter: company_careers")
+    try:
+        source = company_source or CompanyCareersSource(config_path=config_path)
+        result = source.fetch_all_jobs()
+    except CompanyCareersConfigError as exc:
+        raise MvpPipelineError(str(exc)) from exc
+
+    return SourceLoadResult(
+        source=source,
+        jobs=result.jobs,
+        raw_count=result.raw_count,
+        warnings=result.warnings,
+        company_health=result.to_summary(),
+    )
+
+
+def _load_all_sources(
+    *,
+    input_path: Path | None,
+    source_since_date: str | None,
+    source_limit: int | None,
+    company_config_path: Path | None,
+    local_source: str,
+    company_source: CompanyCareersSource | None,
+) -> SourceLoadResult:
+    """Combine company_careers with an optional local export before dedupe."""
+
+    company = _load_company_careers(
+        config_path=company_config_path,
+        company_source=company_source,
+    )
+    jobs = list(company.jobs)
+    raw_count = company.raw_count
+    warnings = list(company.warnings)
+
+    if input_path is not None:
+        local = _load_local_source(
+            source_name=local_source,
+            input_path=input_path,
+            source_since_date=source_since_date,
+            source_limit=source_limit,
+        )
+        jobs.extend(local.jobs)
+        raw_count += local.raw_count
+        warnings.extend(local.warnings)
+    else:
+        warnings.append(
+            "Source 'all' ran company_careers only; pass --input with "
+            "--local-source to also include a local export."
+        )
+
+    return SourceLoadResult(
+        source=company.source,
+        jobs=jobs,
+        raw_count=raw_count,
+        warnings=warnings,
+        company_health=company.company_health,
+    )
+
+
+def _load_local_source(
+    source_name: str,
+    input_path: Path | None,
     source_since_date: str | None = None,
     source_limit: int | None = None,
 ) -> SourceLoadResult:
-    """Load jobs from an approved local source adapter."""
+    """Load jobs from an approved local file-based source adapter."""
 
+    if input_path is None:
+        raise MvpPipelineError(f"--input is required for source '{source_name}'")
     _require_file(input_path, "Input file")
     try:
         source = create_source_adapter(
@@ -384,8 +519,8 @@ def _load_source(
         )
 
     raise MvpPipelineError(
-        "MVP runner supports --source approved_json, ksbit_export, or "
-        "kelleylink_excel"
+        "MVP runner supports --source approved_json, ksbit_export, "
+        "kelleylink_excel, company_careers, or all"
     )
 
 
@@ -682,8 +817,41 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="python -m hope_job_agent.pipeline.run_mvp",
         description="Run the MVP job pipeline against an approved local source.",
     )
-    parser.add_argument("--source", required=True, help="Approved source adapter name.")
-    parser.add_argument("--input", required=True, type=Path, help="Path to job input.")
+    parser.add_argument(
+        "--source",
+        required=True,
+        help=(
+            "Approved source: approved_json, ksbit_export, kelleylink_excel, "
+            "company_careers, or all."
+        ),
+    )
+    parser.add_argument(
+        "--input",
+        required=False,
+        default=None,
+        type=Path,
+        help=(
+            "Path to a local job export. Required for approved_json/ksbit_export/"
+            "kelleylink_excel. Optional for company_careers and all."
+        ),
+    )
+    parser.add_argument(
+        "--company-config",
+        type=Path,
+        default=None,
+        help=(
+            "Path to the company_careers YAML/JSON config. Defaults to "
+            f"{DEFAULT_COMPANY_CONFIG_PATH}."
+        ),
+    )
+    parser.add_argument(
+        "--local-source",
+        default="kelleylink_excel",
+        help=(
+            "For --source all, the local export adapter to combine with "
+            "company_careers. Defaults to kelleylink_excel."
+        ),
+    )
     parser.add_argument(
         "--profiles",
         type=Path,
@@ -743,8 +911,17 @@ def _build_parser() -> argparse.ArgumentParser:
         "--database-url",
         default=None,
         help=(
-            "SQLite persistence target. Defaults to DATABASE_URL, or "
+            "Persistence target URL. Defaults to DATABASE_URL, or "
             "data/hope_job_agent.sqlite3 when unset."
+        ),
+    )
+    parser.add_argument(
+        "--storage",
+        choices=("auto", "sqlite", "postgres", "memory"),
+        default="auto",
+        help=(
+            "Persistence backend: auto (from DATABASE_URL), sqlite, postgres, "
+            "or memory."
         ),
     )
     parser.add_argument(
@@ -786,10 +963,13 @@ def main(argv: Sequence[str] | None = None) -> None:
             limit=args.limit,
             source_since_date=args.source_since_date,
             source_limit=args.source_limit,
+            company_config_path=args.company_config,
+            local_source=args.local_source,
             dry_run=args.dry_run,
             skip_store=args.skip_store,
             verbose=args.verbose,
             database_url=args.database_url,
+            storage=args.storage,
             data_quality_thresholds=thresholds,
         )
     except MvpPipelineError as exc:
@@ -803,6 +983,24 @@ def main(argv: Sequence[str] | None = None) -> None:
     print(f"Source: {summary['source']}")
     print(f"Raw jobs: {summary['raw_count']}")
     print(f"Unique jobs: {summary['unique_count']}")
+    health = summary.get("company_careers_health")
+    if health:
+        print(
+            "Company careers: "
+            f"fetched={health['raw_count']} kept={health['kept_count']} "
+            f"duplicates={health['duplicate_count']} "
+            f"ok={health['companies_ok']}/{health['companies_total']}"
+        )
+        for company in health.get("per_company", []):
+            print(
+                f"  - {company['company_name']} [{company['provider']}]: "
+                f"status={company['status']} fetched={company['fetched']} "
+                f"kept={company['kept']} skipped_kw={company['skipped_by_keyword']} "
+                f"skipped_filter={company['skipped_by_filter']}"
+                + (f" error={company['error']}" if company.get("error") else "")
+            )
+        if health.get("failed_companies"):
+            print(f"  Failed companies: {', '.join(health['failed_companies'])}")
     print(f"Profiles: {summary['profile_count']}")
     print(f"Ranked matches: {summary['total_ranked_matches']}")
     print(

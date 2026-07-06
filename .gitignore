@@ -35,6 +35,7 @@ data/*
 !data/sample_ksbit_jobs.csv
 !data/sample_ksbit_jobs.json
 !data/gold_job_postings_labeled.json
+!data/data_quality_thresholds.json
 outputs/
 logs/
 *.log

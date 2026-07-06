@@ -1,0 +1,31 @@
+{
+  "jobs": [
+    {
+      "id": "ash-3001",
+      "title": "Security Analyst, Early Career",
+      "department": "Security",
+      "team": "GRC",
+      "employmentType": "FullTime",
+      "location": "Remote (US)",
+      "isRemote": true,
+      "publishedAt": "2026-06-11T00:00:00Z",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/3001",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/3001/application",
+      "descriptionPlain": "Support SOC monitoring, GRC, incident response, and risk analytics.",
+      "compensationTierSummary": "$80K - $110K"
+    },
+    {
+      "id": "ash-3002",
+      "title": "Principal Mechanical Engineer",
+      "department": "Hardware",
+      "team": "Mechanical",
+      "employmentType": "FullTime",
+      "location": "San Jose, CA",
+      "isRemote": false,
+      "publishedAt": "2026-06-05T00:00:00Z",
+      "jobUrl": "https://jobs.ashbyhq.com/acme/3002",
+      "applyUrl": "https://jobs.ashbyhq.com/acme/3002/application",
+      "descriptionPlain": "Design mechanical assemblies and lead hardware architecture."
+    }
+  ]
+}

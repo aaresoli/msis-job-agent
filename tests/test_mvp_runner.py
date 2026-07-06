@@ -363,15 +363,14 @@ def test_mvp_runner_preflights_database_before_writing_outputs(tmp_path):
     _write_jobs(jobs_path, [_data_job()])
     _write_profiles(profiles_path)
 
-    with pytest.raises(
-        MvpPipelineError, match="PostgreSQL persistence is not implemented"
-    ):
+    with pytest.raises(MvpPipelineError, match="PostgreSQL persistence failed"):
         run_mvp_pipeline(
             source_name="approved_json",
             input_path=jobs_path,
             profiles_path=profiles_path,
             output_path=output_path,
             database_url="postgresql://user:password@example/jobs",
+            storage="postgres",
         )
 
     assert not output_path.exists()

@@ -18,7 +18,7 @@ from hope_job_agent.pipeline.validate import validate_job
 from hope_job_agent.scoring.ranker import rank_jobs_for_student
 from hope_job_agent.sources.base import BaseJobSource
 from hope_job_agent.sources.registry import ensure_source_allowed
-from hope_job_agent.storage import SQLiteJobStore
+from hope_job_agent.storage import create_job_store
 from hope_job_agent.utils.output import write_pipeline_output
 
 
@@ -108,7 +108,7 @@ def run_pipeline(
         if database_url is not None
         else get_settings().database_url.get_secret_value()
     )
-    store = SQLiteJobStore(resolved_database_url)
+    store = create_job_store(resolved_database_url)
     try:
         store.persist_pipeline_run(
             run_id=run_id,

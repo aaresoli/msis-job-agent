@@ -2,10 +2,51 @@ services:
   app:
     build: .
     command: uvicorn hope_job_agent.main:app --host 0.0.0.0 --port 8000 --reload
+    profiles: ["app"]
     env_file:
       - .env.example
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hope_user}:${POSTGRES_PASSWORD:-hope_password}@postgres:5432/${POSTGRES_DB:-hope_jobs}
     ports:
       - "8000:8000"
     volumes:
       - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
 
+  postgres:
+    # pgvector-enabled PostgreSQL for local development.
+    image: pgvector/pgvector:pg16
+    container_name: hope_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hope_jobs}
+      POSTGRES_USER: ${POSTGRES_USER:-hope_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hope_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - hope_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hope_user} -d ${POSTGRES_DB:-hope_jobs}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Optional lightweight DB admin UI. Start explicitly with the "admin" profile:
+  #   docker compose --profile admin up -d pgadmin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: hope_pgadmin
+    profiles: ["admin"]
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+
+volumes:
+  hope_pgdata:

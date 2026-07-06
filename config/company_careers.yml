@@ -1,0 +1,324 @@
+# Company Careers source configuration (public ATS job boards).
+#
+# This file drives the `company_careers` source. Graduate Career Services can
+# add, disable, or reprioritize employers here without editing Python.
+#
+# Compliance (see docs/company_careers.md and docs/compliance_notes.md):
+#   - Public employer career pages and public ATS APIs only.
+#   - No LinkedIn/Handshake or any logged-in/account-gated collection.
+#   - No CAPTCHA solving, login automation, proxy evasion, or access bypass.
+#   - Respect robots.txt, rate limit, and send a clear User-Agent.
+#   - A source that blocks the crawler is disabled automatically.
+#
+# Provider -> which field holds the ATS identifier:
+#   greenhouse       -> ats_slug = board token
+#   lever            -> ats_slug = site name
+#   ashby            -> ats_slug = job-board name
+#   smartrecruiters  -> ats_slug = company identifier
+#   workday          -> host + tenant + site
+#
+# All ATS endpoints below were verified as public (HTTP 200, JSON) during setup.
+
+fetch_policy:
+  user_agent: "KelleyHOPE-MSIS-JobAgent/0.1 (+https://kelley.iu.edu; compliant public career-page reader)"
+  min_interval_seconds: 1.0
+  timeout_seconds: 15.0
+  max_retries: 2
+  backoff_seconds: 0.5
+  max_jobs_per_company: 200
+  max_total_jobs_per_run: 2000
+  respect_robots: true
+  fetch_descriptions: true
+
+# Keep score >= this to retain a posting (see relevance.py scoring).
+relevance_threshold: 3
+
+companies:
+  # ---------------------------------------------------------------------------
+  # Greenhouse (public Boards API) - tech / data / cloud / security / fintech
+  # ---------------------------------------------------------------------------
+  - company_name: "Stripe"
+    ats_provider: greenhouse
+    ats_slug: stripe
+    careers_url: "https://stripe.com/jobs/search"
+    priority: 10
+    enabled: true
+    notes: "Fintech; strong data/analytics, risk, and platform roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Databricks"
+    ats_provider: greenhouse
+    ats_slug: databricks
+    careers_url: "https://www.databricks.com/company/careers/open-positions"
+    priority: 10
+    enabled: true
+    notes: "Data + AI platform; analytics/data engineering heavy."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Datadog"
+    ats_provider: greenhouse
+    ats_slug: datadog
+    careers_url: "https://careers.datadoghq.com/"
+    priority: 15
+    enabled: true
+    notes: "Observability/cloud/security; solutions and analytics roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Cloudflare"
+    ats_provider: greenhouse
+    ats_slug: cloudflare
+    careers_url: "https://www.cloudflare.com/careers/jobs/"
+    priority: 15
+    enabled: true
+    notes: "Cloud + security platform; security and solutions engineering."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Coinbase"
+    ats_provider: greenhouse
+    ats_slug: coinbase
+    careers_url: "https://www.coinbase.com/careers/positions"
+    priority: 20
+    enabled: true
+    notes: "Fintech; security, risk, and data roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Airbnb"
+    ats_provider: greenhouse
+    ats_slug: airbnb
+    careers_url: "https://careers.airbnb.com/"
+    priority: 20
+    enabled: true
+    notes: "Retail/travel tech; analytics, data, and platform roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Robinhood"
+    ats_provider: greenhouse
+    ats_slug: robinhood
+    careers_url: "https://careers.robinhood.com/"
+    priority: 25
+    enabled: true
+    notes: "Fintech; data, risk, and analytics roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Instacart"
+    ats_provider: greenhouse
+    ats_slug: instacart
+    careers_url: "https://instacart.careers/"
+    priority: 25
+    enabled: true
+    notes: "Retail tech; analytics, data, and business systems roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "GitLab"
+    ats_provider: greenhouse
+    ats_slug: gitlab
+    careers_url: "https://about.gitlab.com/jobs/"
+    priority: 30
+    enabled: true
+    notes: "DevOps/platform/security; remote-friendly."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Discord"
+    ats_provider: greenhouse
+    ats_slug: discord
+    careers_url: "https://discord.com/careers"
+    priority: 30
+    enabled: true
+    notes: "Consumer platform; data and platform roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  # ---------------------------------------------------------------------------
+  # Lever (public postings API)
+  # ---------------------------------------------------------------------------
+  - company_name: "Palantir Technologies"
+    ats_provider: lever
+    ats_slug: palantir
+    careers_url: "https://jobs.lever.co/palantir"
+    priority: 12
+    enabled: true
+    notes: "Data/deployment/consulting-style roles; strong analytics fit."
+    compliance_review: "Public Lever postings API verified."
+
+  - company_name: "Netflix"
+    ats_provider: lever
+    ats_slug: netflix
+    careers_url: "https://jobs.netflix.com/"
+    priority: 22
+    enabled: true
+    notes: "Data platform and analytics roles."
+    compliance_review: "Public Lever postings API verified."
+
+  - company_name: "Plaid"
+    ats_provider: lever
+    ats_slug: plaid
+    careers_url: "https://plaid.com/careers/"
+    priority: 18
+    enabled: true
+    notes: "Fintech; data, risk, and security roles."
+    compliance_review: "Public Lever postings API verified."
+
+  - company_name: "Spotify"
+    ats_provider: lever
+    ats_slug: spotify
+    careers_url: "https://www.lifeatspotify.com/jobs"
+    priority: 28
+    enabled: true
+    notes: "Data/analytics/platform roles."
+    compliance_review: "Public Lever postings API verified."
+
+  # ---------------------------------------------------------------------------
+  # Ashby (public posting API)
+  # ---------------------------------------------------------------------------
+  - company_name: "OpenAI"
+    ats_provider: ashby
+    ats_slug: openai
+    careers_url: "https://openai.com/careers/search/"
+    priority: 12
+    enabled: true
+    notes: "AI/data roles; relevant to Data Analytics and AI and IS Research."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "Ramp"
+    ats_provider: ashby
+    ats_slug: ramp
+    careers_url: "https://ramp.com/careers"
+    priority: 18
+    enabled: true
+    notes: "Fintech; data, analytics, and business systems roles."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "Notion"
+    ats_provider: ashby
+    ats_slug: notion
+    careers_url: "https://www.notion.so/careers"
+    priority: 28
+    enabled: true
+    notes: "Product/platform/data roles."
+    compliance_review: "Public Ashby posting API verified."
+
+  # ---------------------------------------------------------------------------
+  # SmartRecruiters (public postings API) - financial services / enterprise
+  # ---------------------------------------------------------------------------
+  - company_name: "Visa"
+    ats_provider: smartrecruiters
+    ats_slug: Visa
+    careers_url: "https://jobs.smartrecruiters.com/Visa"
+    priority: 14
+    enabled: true
+    notes: "Financial services; heavy analyst, security, and systems hiring."
+    compliance_review: "Public SmartRecruiters postings API verified."
+
+  - company_name: "Bosch"
+    ats_provider: smartrecruiters
+    ats_slug: BoschGroup
+    careers_url: "https://jobs.smartrecruiters.com/BoschGroup"
+    priority: 26
+    enabled: true
+    notes: "Global enterprise with US ops; IT/enterprise systems and data roles."
+    compliance_review: "Public SmartRecruiters postings API verified."
+
+  # ---------------------------------------------------------------------------
+  # Workday (public career-site endpoint) - enterprise / consulting
+  # ---------------------------------------------------------------------------
+  - company_name: "Salesforce"
+    ats_provider: workday
+    host: "salesforce.wd12.myworkdayjobs.com"
+    tenant: salesforce
+    site: External_Career_Site
+    careers_url: "https://careers.salesforce.com/"
+    priority: 16
+    enabled: true
+    notes: "Enterprise CRM/cloud/platform; solutions and business systems roles."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  # ===========================================================================
+  # PENDING / DISABLED - candidate-pool employers without a clean public ATS
+  # JSON board in this version. Kept here (enabled: false) for transparency and
+  # to document why. Re-enable once an approved API/export is available.
+  # ===========================================================================
+  - company_name: "Accenture"
+    ats_provider: icims
+    careers_url: "https://www.accenture.com/us-en/careers/jobsearch"
+    enabled: false
+    priority: 100
+    notes: "Uses a custom/Avature-style portal; no clean public JSON board."
+    compliance_review: "Pending: no compliant public endpoint identified."
+
+  - company_name: "Deloitte"
+    ats_provider: static
+    careers_url: "https://apply.deloitte.com/"
+    enabled: false
+    priority: 100
+    notes: "Custom career portal; SmartRecruiters 'Deloitte' id returned no US postings."
+    compliance_review: "Pending: no compliant public endpoint identified."
+
+  - company_name: "EY"
+    ats_provider: static
+    careers_url: "https://careers.ey.com/"
+    enabled: false
+    priority: 100
+    notes: "SuccessFactors-based portal; no clean public JSON board."
+    compliance_review: "Pending: no compliant public endpoint identified."
+
+  - company_name: "PwC"
+    ats_provider: static
+    careers_url: "https://www.pwc.com/us/en/careers.html"
+    enabled: false
+    priority: 100
+    notes: "Custom career portal; no clean public JSON board."
+    compliance_review: "Pending: no compliant public endpoint identified."
+
+  - company_name: "KPMG US"
+    ats_provider: static
+    careers_url: "https://www.kpmguscareers.com/"
+    enabled: false
+    priority: 100
+    notes: "Custom portal; Lever slug 'kpmg-us' returned 404."
+    compliance_review: "Pending: no compliant public endpoint identified."
+
+  - company_name: "JPMorgan Chase"
+    ats_provider: static
+    careers_url: "https://careers.jpmorgan.com/"
+    enabled: false
+    priority: 100
+    notes: "Oracle/custom portal; no clean public JSON board."
+    compliance_review: "Pending: no compliant public endpoint identified."
+
+  - company_name: "Eli Lilly and Company"
+    ats_provider: workday
+    host: "lilly.wd5.myworkdayjobs.com"
+    tenant: lilly
+    site: LLY
+    careers_url: "https://careers.lilly.com/"
+    enabled: false
+    priority: 40
+    notes: "Indiana/Kelley-relevant. Workday tenant/site must be verified before enabling."
+    compliance_review: "Pending: verify Workday tenant/site and request volume."
+
+  - company_name: "Cummins"
+    ats_provider: static
+    careers_url: "https://www.cummins.com/careers"
+    enabled: false
+    priority: 100
+    notes: "Indiana/Kelley-relevant. Oracle/Taleo portal; no clean public JSON board."
+    compliance_review: "Pending: no compliant public endpoint identified."
+
+  - company_name: "Mastercard"
+    ats_provider: workday
+    host: "mastercard.wd1.myworkdayjobs.com"
+    tenant: mastercard
+    site: CorporateCareers
+    careers_url: "https://careers.mastercard.com/"
+    enabled: false
+    priority: 40
+    notes: "Workday tenant/site must be verified before enabling."
+    compliance_review: "Pending: verify Workday tenant/site and request volume."
+
+  - company_name: "ServiceNow"
+    ats_provider: smartrecruiters
+    ats_slug: ServiceNow
+    careers_url: "https://careers.servicenow.com/"
+    enabled: false
+    priority: 40
+    notes: "SmartRecruiters identifier must be confirmed before enabling."
+    compliance_review: "Pending: verify SmartRecruiters company identifier."

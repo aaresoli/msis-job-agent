@@ -34,21 +34,99 @@ MSIS_TARGET_ROLES = [
 ]
 
 # Maps historical/alternate concentration names onto the current five tracks.
-# Keys include both prior sprint names and the four legacy canonical names so
-# older exports, fixtures, and profiles keep classifying correctly.
+# Keys include prior sprint names, the older four-track canonical names, the
+# short program codes, and common shorthand so older exports, fixtures,
+# profiles, and source-provided tags keep classifying into the official names.
+#
+# These aliases are only ever applied to *explicit* concentration tags supplied
+# by a source or profile (see ``normalize_concentration``). They are not used as
+# free-text keyword rules, so intentionally broad shorthand such as "AI" or
+# "Research" is safe here.
 LEGACY_CONCENTRATION_ALIASES = {
+    # --- Data Analytics and AI ---
     "Business Analytics": "Data Analytics and AI",
+    "Business Intelligence and Analytics": "Data Analytics and AI",
+    "Analytics": "Data Analytics and AI",
     "Data Analytics": "Data Analytics and AI",
+    "AI": "Data Analytics and AI",
+    "DAAI": "Data Analytics and AI",
+    "DA & AI": "Data Analytics and AI",
+    # --- Cybersecurity and Risk Analytics ---
     "Cybersecurity": "Cybersecurity and Risk Analytics",
     "Cyber Security": "Cybersecurity and Risk Analytics",
+    "Security": "Cybersecurity and Risk Analytics",
+    "Risk Analytics": "Cybersecurity and Risk Analytics",
+    "CRA": "Cybersecurity and Risk Analytics",
+    # --- Digital Enterprise Systems and AI ---
     "Digital Transformation with AI": "Digital Enterprise Systems and AI",
     "Digital Enterprise Systems": "Digital Enterprise Systems and AI",
     "Enterprise Systems": "Digital Enterprise Systems and AI",
     "IT Strategy / Consulting": "Digital Enterprise Systems and AI",
+    "IT Strategy and Management": "Digital Enterprise Systems and AI",
+    "DESAI": "Digital Enterprise Systems and AI",
+    "DES & AI": "Digital Enterprise Systems and AI",
+    "ERP": "Digital Enterprise Systems and AI",
+    "SAP": "Digital Enterprise Systems and AI",
+    "Enterprise AI": "Digital Enterprise Systems and AI",
+    # --- Digital Platforms and Security ---
+    "Digital Platforms": "Digital Platforms and Security",
+    "Cloud Platforms": "Digital Platforms and Security",
+    "Technology Architecture": "Digital Platforms and Security",
+    "Platform Security": "Digital Platforms and Security",
+    "Digital Innovation": "Digital Platforms and Security",
+    "DPS": "Digital Platforms and Security",
+    # --- IS Research ---
     "Information Systems Research in AI": "IS Research",
     "Information Systems Research": "IS Research",
     "IS Research in AI": "IS Research",
+    "ISR": "IS Research",
+    "Pre-PhD": "IS Research",
+    "Research": "IS Research",
 }
+
+# Case-insensitive lookup that resolves official names, short codes, and legacy
+# aliases onto the canonical official concentration name.
+_CONCENTRATION_LOOKUP: dict[str, str] = {}
+for _official in MSIS_CONCENTRATIONS:
+    _CONCENTRATION_LOOKUP[_official.casefold()] = _official
+for _code_name, _code in CONCENTRATION_CODES.items():
+    _CONCENTRATION_LOOKUP[_code.casefold()] = _code_name
+for _alias, _canonical in LEGACY_CONCENTRATION_ALIASES.items():
+    _CONCENTRATION_LOOKUP.setdefault(_alias.casefold(), _canonical)
+
+
+def normalize_concentration(value: str | None) -> str | None:
+    """Return the official concentration name for a raw/legacy/coded value.
+
+    Matching is case-insensitive and tolerant of surrounding whitespace. Returns
+    ``None`` when the value cannot be mapped to one of the five official tracks,
+    so callers can decide whether to drop or keep the unmapped tag.
+    """
+
+    if value is None:
+        return None
+    key = " ".join(str(value).split()).casefold()
+    if not key:
+        return None
+    return _CONCENTRATION_LOOKUP.get(key)
+
+
+def normalize_concentrations(values: list[str] | None) -> list[str]:
+    """Normalize a list of concentration tags to official names, de-duplicated.
+
+    Unmappable values are dropped. Output order follows the official taxonomy
+    order so downstream exports stay stable and explainable.
+    """
+
+    if not values:
+        return []
+    resolved = {
+        normalized
+        for value in values
+        if (normalized := normalize_concentration(value)) is not None
+    }
+    return [name for name in MSIS_CONCENTRATIONS if name in resolved]
+
 
 ROLE_TO_CONCENTRATIONS = {
     "IT Consultant / Tech Risk": [

@@ -2,10 +2,8 @@
 
 `run_mvp` depends on the :class:`JobStore` protocol rather than a concrete
 backend, and constructs stores through :func:`create_job_store`. This keeps the
-current local SQLite backend in place while making an alternative backend (for
-example a managed PostgreSQL instance for shared/production use) a drop-in:
-implement the protocol and register it in the factory. No behavior changes for
-SQLite users.
+current local SQLite backend in place while making PostgreSQL a drop-in for
+shared/production use.
 """
 
 from __future__ import annotations
@@ -14,6 +12,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from hope_job_agent.config.database import resolve_database_url
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.match import JobMatch
 from hope_job_agent.models.student import StudentProfile
@@ -58,29 +57,47 @@ class JobStore(Protocol):
         ...
 
 
-def create_job_store(database_url: str | None) -> JobStore:
-    """Build a :class:`JobStore` for the configured ``database_url``.
+def create_job_store(
+    database_url: str | None = None,
+    *,
+    storage: str = "auto",
+) -> JobStore:
+    """Build a :class:`JobStore` for the configured persistence mode.
 
-    Empty and ``sqlite://`` URLs return the local SQLite backend. A
-    ``postgres://`` URL is recognized as the intended drop-in point but is not
-    implemented yet; the error explains how to register a backend.
+    ``storage`` values:
+
+    * ``auto`` — PostgreSQL when ``database_url``/``DATABASE_URL`` is postgres,
+      otherwise SQLite (empty URL -> default file).
+    * ``sqlite`` — local SQLite backend.
+    * ``memory`` — in-memory store (no database).
+    * ``postgres`` — PostgreSQL via repositories + pgvector schema.
     """
 
-    value = (database_url or "").strip()
-    scheme = value.split("://", 1)[0].lower() if "://" in value else ""
+    mode = storage.strip().casefold()
+    try:
+        resolved = resolve_database_url(
+            database_url,
+            storage=mode if mode != "auto" else "auto",
+        )
+    except ValueError as exc:
+        raise JobStoreError(str(exc)) from exc
 
-    if value == "" or scheme == "sqlite":
+    if mode == "memory":
+        from hope_job_agent.storage.memory_store import MemoryJobStore
+
+        return MemoryJobStore(database_url=resolved or "memory://")
+
+    scheme = resolved.split("://", 1)[0].lower() if "://" in resolved else ""
+
+    if mode == "postgres" or scheme.startswith("postgres"):
+        from hope_job_agent.storage.postgres_store import PostgresJobStore
+
+        return PostgresJobStore(resolved, storage="postgres")
+
+    if resolved == "" or scheme == "sqlite":
         from hope_job_agent.storage.sqlite_store import SQLiteJobStore
 
-        return SQLiteJobStore(database_url)
-
-    if scheme in {"postgres", "postgresql"}:
-        raise JobStoreError(
-            "PostgreSQL persistence is not implemented yet. Implement the "
-            "JobStore protocol and register it in create_job_store() as a "
-            "drop-in replacement, or set DATABASE_URL to a sqlite URL for "
-            "local runs."
-        )
+        return SQLiteJobStore(resolved or None)
 
     raise JobStoreError(
         f"Unsupported DATABASE_URL scheme for persistence: {database_url!r}"

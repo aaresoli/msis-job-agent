@@ -1,0 +1,38 @@
+{
+  "offset": 0,
+  "limit": 100,
+  "totalFound": 2,
+  "content": [
+    {
+      "id": "sr-4001",
+      "name": "Cloud Solutions Consultant (Associate)",
+      "releasedDate": "2026-06-12T10:00:00.000Z",
+      "location": {
+        "city": "Austin",
+        "region": "TX",
+        "country": "us",
+        "remote": false,
+        "hybrid": true,
+        "fullLocation": "Austin, TX, United States"
+      },
+      "typeOfEmployment": {"label": "Full-time"},
+      "department": {"label": "Technology Consulting"},
+      "experienceLevel": {"label": "Associate"}
+    },
+    {
+      "id": "sr-4002",
+      "name": "Delivery Driver",
+      "releasedDate": "2026-06-11T10:00:00.000Z",
+      "location": {
+        "city": "Austin",
+        "region": "TX",
+        "country": "us",
+        "remote": false,
+        "hybrid": false,
+        "fullLocation": "Austin, TX, United States"
+      },
+      "typeOfEmployment": {"label": "Full-time"},
+      "department": {"label": "Logistics"}
+    }
+  ]
+}

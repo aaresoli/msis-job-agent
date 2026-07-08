@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "TotalJobsCount": 1,
+      "requisitionList": [
+        {
+          "Id": "123456",
+          "Title": "Business Systems Analyst",
+          "PostedDate": "2026-06-20",
+          "PrimaryLocation": "Chicago, IL, United States",
+          "ShortDescriptionStr": "<p>Analyst role on the ERP team.</p>",
+          "WorkplaceType": "Hybrid"
+        }
+      ]
+    }
+  ]
+}

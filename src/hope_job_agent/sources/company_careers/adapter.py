@@ -77,6 +77,9 @@ class CompanyCareersFetchResult:
     kept_count: int
     duplicate_count: int
     warnings: list[str] = field(default_factory=list)
+    # Ranked LAMP-list coverage snapshot computed from the config; see
+    # ``compute_coverage_summary``.
+    coverage: dict[str, Any] = field(default_factory=dict)
 
     def failed_companies(self) -> list[str]:
         """Return names of companies that failed or were blocked."""
@@ -99,7 +102,54 @@ class CompanyCareersFetchResult:
             "failed_companies": self.failed_companies(),
             "per_company": [asdict(report) for report in self.reports],
             "warnings": self.warnings,
+            "lamp_coverage": self.coverage,
+            # Backward-compatible alias for consumers written when only the
+            # top 50 were tracked.
+            "top50_coverage": self.coverage,
         }
+
+
+def compute_coverage_summary(
+    config: CompanyCareersConfig,
+    reports: list[CompanyFetchReport] | None = None,
+) -> dict[str, Any]:
+    """Summarize ranked LAMP-list coverage from config metadata.
+
+    Tracked companies are those with ``student_interest_rank`` set. Reports,
+    when provided, contribute the live smoke outcome for enabled companies.
+    """
+
+    tracked = [c for c in config.companies if c.student_interest_rank is not None]
+    failed_statuses = {"failed", "blocked", "robots_disallowed"}
+    failed_by_name = {
+        r.company_name
+        for r in (reports or [])
+        if r.status in failed_statuses
+    }
+    # Every Excel rank is covered either by its own entry or as a merged alias
+    # of a better-ranked canonical entry.
+    ranks_covered = {c.student_interest_rank for c in tracked}
+    merged_alias_ranks = {
+        rank: c.company_name for c in tracked for rank in c.merged_excel_ranks
+    }
+    ranks_covered.update(merged_alias_ranks)
+    return {
+        "tracked_total": len(tracked),
+        "ranks_covered_total": len(ranks_covered),
+        "merged_alias_ranks": merged_alias_ranks,
+        "verified_enabled": sum(
+            1 for c in tracked if c.enabled and c.verification_status == "verified"
+        ),
+        "verified_unsupported": sum(
+            1 for c in tracked if c.verification_status == "unsupported"
+        ),
+        "unverified": sum(
+            1 for c in tracked if c.verification_status == "pending"
+        ),
+        "failed_live_smoke": sorted(
+            c.company_name for c in tracked if c.company_name in failed_by_name
+        ),
+    }
 
 
 class CompanyCareersSource(BaseJobSource):
@@ -190,6 +240,7 @@ class CompanyCareersSource(BaseJobSource):
             kept_count=len(kept_jobs),
             duplicate_count=duplicate_count,
             warnings=warnings,
+            coverage=compute_coverage_summary(self.config, reports),
         )
 
     def health_check(self) -> bool:

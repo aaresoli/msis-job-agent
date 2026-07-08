@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 DEFAULT_CONFIG_PATH = Path("config/company_careers.yml")
 
@@ -26,10 +26,18 @@ KNOWN_PROVIDERS = frozenset(
         "ashby",
         "smartrecruiters",
         "workday",
+        "oraclecloud",
         "icims",
         "static",
     }
 )
+
+# Lifecycle of an employer entry's endpoint verification (see docs/company_careers.md):
+#   verified    - a public endpoint was confirmed live (low-volume request).
+#   pending     - a candidate endpoint exists but has not been confirmed yet.
+#   unsupported - no compliant public endpoint exists; entry stays disabled with
+#                 an explicit ``unsupported_reason``.
+VERIFICATION_STATUSES = frozenset({"verified", "pending", "unsupported"})
 
 
 class FetchPolicy(BaseModel):
@@ -74,6 +82,19 @@ class CompanyTarget(BaseModel):
     relevant_keywords_override: list[str] | None = None
     notes: str | None = None
     compliance_review: str | None = None
+    # Structured coverage metadata sourced from the MSIS LAMP list and the
+    # endpoint-verification workflow (scripts/research_lamp_companies.py).
+    student_interest_rank: int | None = Field(default=None, ge=1)
+    student_interest_count: int | None = Field(default=None, ge=0)
+    # Excel ranks whose rows are duplicate aliases of this entry (e.g. rank
+    # 110 "TCS" merged into rank 78 "Tata Consultancy Services"). Lets the
+    # coverage math account for every Excel rank without duplicate entries.
+    merged_excel_ranks: list[int] = Field(default_factory=list)
+    industry: str | None = None
+    verification_status: str = "pending"
+    verified_at: str | None = None
+    verification_source_url: str | None = None
+    unsupported_reason: str | None = None
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -81,6 +102,38 @@ class CompanyTarget(BaseModel):
     @classmethod
     def _normalize_provider(cls, value: str) -> str:
         return value.strip().casefold()
+
+    @field_validator("verification_status")
+    @classmethod
+    def _validate_verification_status(cls, value: str) -> str:
+        normalized = value.strip().casefold()
+        if normalized not in VERIFICATION_STATUSES:
+            allowed = ", ".join(sorted(VERIFICATION_STATUSES))
+            raise ValueError(
+                f"verification_status must be one of: {allowed} (got '{value}')"
+            )
+        return normalized
+
+    @model_validator(mode="after")
+    def _check_verification_consistency(self) -> "CompanyTarget":
+        # Ranked LAMP-list employers (student_interest_rank set) must be either
+        # enabled with a verified endpoint or disabled with an explicit status.
+        if (
+            self.student_interest_rank is not None
+            and self.enabled
+            and self.verification_status != "verified"
+        ):
+            raise ValueError(
+                f"'{self.company_name}' is enabled but verification_status is "
+                f"'{self.verification_status}'. Enabled ranked companies must "
+                "have a verified public endpoint."
+            )
+        if self.verification_status == "unsupported" and not self.unsupported_reason:
+            raise ValueError(
+                f"'{self.company_name}' is marked unsupported but has no "
+                "unsupported_reason."
+            )
+        return self
 
     @property
     def provider_is_known(self) -> bool:
@@ -97,6 +150,30 @@ class CompanyCareersConfig(BaseModel):
     companies: list[CompanyTarget] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def _reject_duplicate_enabled_endpoints(self) -> "CompanyCareersConfig":
+        """Alias entries must not cause two runtime fetches of one board."""
+
+        seen: dict[tuple[str, str, str, str, str], str] = {}
+        for company in self.companies:
+            if not company.enabled:
+                continue
+            key = (
+                company.ats_provider,
+                (company.ats_slug or "").casefold(),
+                (company.host or "").casefold(),
+                (company.tenant or "").casefold(),
+                (company.site or "").casefold(),
+            )
+            if key in seen:
+                raise ValueError(
+                    f"Duplicate enabled ATS endpoint: '{company.company_name}' "
+                    f"and '{seen[key]}' both target {key}. Disable one (alias "
+                    "duplicates must not double-fetch a board)."
+                )
+            seen[key] = company.company_name
+        return self
 
     def enabled_companies(self) -> list[CompanyTarget]:
         """Return enabled companies sorted by ascending priority then name."""

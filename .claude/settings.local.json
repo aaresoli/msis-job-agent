@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"//wsl.localhost/ubuntu/home/aashish/code/msis-job-agent\" && ls -la && echo --- && find . -maxdepth 3 -name \"*.py\" -not -path \"./.venv/*\" -not -path \"./.git/*\" | head -60)",
+      "Bash(cd \"//wsl.localhost/ubuntu/home/aashish/code/msis-job-agent\" && find src config data docs -type f | grep -v __pycache__ | head -80)",
+      "Bash(cd \"//wsl.localhost/ubuntu/home/aashish/code/msis-job-agent\" && ls config data docs scripts tests/sources tests/fixtures 2>/dev/null; echo ---; ls tests | head -60)",
+      "Bash(cd \"//wsl.localhost/ubuntu/home/aashish/code/msis-job-agent\" && find . -iname \"*.xlsx\" -o -iname \"*.pdf\" | grep -v .venv; ls tests/sources/company_careers)"
+    ]
+  }
+}

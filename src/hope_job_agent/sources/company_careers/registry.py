@@ -12,6 +12,9 @@ from hope_job_agent.sources.company_careers.providers.greenhouse import (
 )
 from hope_job_agent.sources.company_careers.providers.icims import ICIMSProvider
 from hope_job_agent.sources.company_careers.providers.lever import LeverProvider
+from hope_job_agent.sources.company_careers.providers.oraclecloud import (
+    OracleCloudProvider,
+)
 from hope_job_agent.sources.company_careers.providers.smartrecruiters import (
     SmartRecruitersProvider,
 )
@@ -25,6 +28,7 @@ _PROVIDER_REGISTRY: dict[str, BaseProvider] = {
         AshbyProvider(),
         SmartRecruitersProvider(),
         WorkdayProvider(),
+        OracleCloudProvider(),
         ICIMSProvider(),
     )
 }

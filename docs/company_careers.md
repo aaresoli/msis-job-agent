@@ -60,7 +60,7 @@ Edit `config/company_careers.yml`. Each entry:
 
 ```yaml
 - company_name: "Example Corp"
-  ats_provider: greenhouse          # greenhouse | lever | ashby | smartrecruiters | workday | icims | static
+  ats_provider: greenhouse          # greenhouse | lever | ashby | smartrecruiters | workday | oraclecloud | icims | static
   ats_slug: examplecorp             # board token / site / board name / company id
   # Workday only:
   # host: example.wd1.myworkdayjobs.com
@@ -75,7 +75,20 @@ Edit `config/company_careers.yml`. Each entry:
   relevant_keywords_override: null  # optional list of extra keywords to boost
   notes: "Why this company is relevant."
   compliance_review: "How the public endpoint was verified."
+  # LAMP tracked-company coverage metadata — set by the verification workflow:
+  student_interest_rank: 12         # rank in the MSIS LAMP list (1-300; omit if not tracked)
+  merged_excel_ranks: []            # Excel ranks merged into this entry as duplicate aliases
+  student_interest_count: 59        # "Student Interest #" from the Excel
+  industry: "Management Consulting"
+  verification_status: verified     # verified | pending | unsupported
+  verified_at: "2026-07-08"
+  verification_source_url: "https://..."  # the endpoint probed at verification
+  unsupported_reason: null          # required when verification_status: unsupported
 ```
+
+Rules enforced by config validation: a company with `student_interest_rank`
+set may only be `enabled: true` when `verification_status: verified`, and
+`unsupported` entries must carry an `unsupported_reason`.
 
 To find the ATS identifier:
 
@@ -84,7 +97,89 @@ To find the ATS identifier:
 - **Ashby**: the job-board name in `api.ashbyhq.com/posting-api/job-board/<NAME>`.
 - **SmartRecruiters**: the company id in `api.smartrecruiters.com/v1/companies/<ID>/postings`.
 - **Workday**: `host`, `tenant`, and `site` from the company's `*.myworkdayjobs.com`
-  career site. Verify one at a time and keep request volume low.
+  career site. Verify one at a time and keep request volume low. Note the tenant
+  can differ from the host prefix (e.g. RSM: host `rsmus.wd1...`, tenant `rsm`).
+- **Oracle Recruiting Cloud**: `host` (the `*.fa.*.oraclecloud.com` Fusion host)
+  and `site` (the `CX_*` Candidate Experience site number) from the company's
+  public career-site URLs, e.g.
+  `https://<host>/hcmUI/CandidateExperience/en/sites/<CX_site>/job/<id>`.
+
+To verify coverage of the ranked MSIS LAMP list (all 300 ranks by default), run:
+
+```bash
+python scripts/research_lamp_companies.py --live   # low-volume endpoint probes
+```
+
+which writes `outputs/company_coverage_report.{json,md}`. Without `--live` it
+only diffs the Excel ranked list against the config (no network access).
+
+## Operations: refreshing and health
+
+Run monthly (or before a demo):
+
+```bash
+# 1. Endpoint refresh: ONE small request per enabled company; flags drift.
+#    Never edits config — review outputs/ats_refresh_report.md first.
+python scripts/ats_refresh_endpoints.py
+
+# 2. Coverage research: full discovery + verification against the Excel list
+#    (use --only NAME to re-discover a single drifted company).
+python scripts/research_lamp_companies.py --live
+
+# 3. Bounded ingestion smoke (title-only relevance, 50 jobs/company).
+python -m hope_job_agent.pipeline.run_mvp --source company_careers \
+    --output outputs/smoke/company_careers_jobs.csv --skip-store
+
+# 4. Health report (Markdown + JSON): config + coverage + last run summary.
+python scripts/ats_health_report.py \
+    --run-summary outputs/smoke/company_careers_jobs.summary.json
+
+# 5. Quality audit (Markdown + JSON): samples and false-positive heuristics.
+python scripts/ats_quality_audit.py \
+    --jobs outputs/smoke/company_careers_jobs.csv \
+    --run-summary outputs/smoke/company_careers_jobs.summary.json
+
+# 6. Combined-source smoke with a local export (KSBIT sample shown).
+python -m hope_job_agent.pipeline.run_mvp --source all \
+    --local-source ksbit_export --input data/sample_ksbit_jobs.json \
+    --output outputs/smoke/all_results.csv --skip-store
+```
+
+Rank coverage counts **ranks, not entries**: duplicate Excel aliases merge
+into the best-ranked canonical entry, which lists the absorbed ranks in
+`merged_excel_ranks` (109 "Slalom Consulting" -> 93 "Slalom", 110 "TCS" -> 78
+"Tata Consultancy Services", 235 "Eli Lilly and Company" -> 16, 247 "Hewlett
+Packard Enterprise (HPE)" -> 142), so 296 entries account for all 300 ranks.
+Brands that hire through an already-enabled parent board (e.g. Tableau ->
+Salesforce, Cerner -> Oracle, Chevrolet -> GM, Discover -> Capital One) stay
+disabled with a covered-by reason so a shared endpoint is never fetched
+twice. `unsupported` and `pending` are intentional compliance outcomes —
+documented decisions, not failures.
+
+How to interpret failures in the health output:
+
+- **blocked / 401 / 403**: the ATS refuses unauthenticated or generic-UA
+  requests. Per compliance rules, disable the company (set
+  `verification_status: unsupported` with the reason) — do not retry harder.
+- **robots_disallowed**: the endpoint host's robots.txt forbids generic
+  crawlers (currently all of `api.smartrecruiters.com`). The runtime skips
+  these automatically; enabling them is a GCS policy decision.
+- **failed with 5xx** (e.g. the FIS Global HTTP 520 seen 2026-07-08): usually
+  transient; re-run before demoting the company.
+- **404 / 410 / 422 on Workday cxs**: the tenant/site id changed. Mark the
+  entry `pending`, re-discover the site id from the public career page, and
+  re-verify before re-enabling.
+- **empty**: endpoint healthy but zero postings — normal for small boards.
+- **zero kept**: postings fetched but none passed relevance. Expected
+  occasionally for hardware/airline/retail-heavy boards, and more common in
+  smoke runs with `fetch_descriptions: false` (title-only scoring). Only tune
+  keywords when a manual sample shows real MSIS roles being dropped.
+- **stale verified_at**: older than the `--stale-days` window (default 30);
+  re-run step 1 to refresh the dates.
+
+Unsupported employers stay in the config (`enabled: false`,
+`unsupported_reason`) so every compliance decision remains visible and
+auditable rather than silently dropped.
 
 **To disable** a company, set `enabled: false`. Leave a `notes`/`compliance_review`
 explaining why (e.g. no compliant public endpoint yet). iCIMS-backed companies

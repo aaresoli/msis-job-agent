@@ -94,6 +94,32 @@ def test_detect_career_stage_variants():
     assert detect_career_stage("Widget Coordinator") == "unknown"
 
 
+def test_msis_role_titles_from_lamp_pdf_are_relevant():
+    # Role titles from "Industries_Companies_Job Titles_as of April 14_2025".
+    samples = [
+        ("Technology Risk Consultant", "Assess IT general controls and SOX compliance."),
+        ("Digital Assurance Associate", "Support digital assurance engagements."),
+        ("Workday Integrations Analyst", "Build Workday integration solutions."),
+        ("SAP Supply Chain Analyst", "Support SAP supply chain modules."),
+        ("ERP Consultant", "Implement ERP transformation programs."),
+        ("ServiceNow Implementor", "Configure ServiceNow workflows."),
+        ("Technology Architect Analyst", "Enterprise architecture analysis."),
+        ("Internal IT Auditor", "Perform internal audit of IT systems."),
+    ]
+    for title, description in samples:
+        result = score_relevance(title, description)
+        assert result.is_relevant is True, title
+
+
+def test_rotational_program_counts_as_early_career():
+    result = score_relevance(
+        "Corporate Finance Rotational Program",
+        "Rotations across finance, analytics, and enterprise systems teams.",
+    )
+    assert result.career_stage in {"early_career", "entry_level", "unknown"}
+    assert "rotational" in " ".join(result.matched_keywords)
+
+
 def test_keywords_override_boosts_score():
     base = score_relevance("Coordinator", "Manage schedules and logistics.")
     boosted = score_relevance(

@@ -46,6 +46,9 @@ CONCENTRATION_KEYWORD_FAMILIES: dict[str, list[str]] = {
         "ai consultant",
         "data consultant",
         "analytics",
+        "product analytics",
+        "supply chain analytics",
+        "operations analytics",
     ],
     "Cybersecurity and Risk Analytics": [
         "cybersecurity analyst",
@@ -65,6 +68,16 @@ CONCENTRATION_KEYWORD_FAMILIES: dict[str, list[str]] = {
         "security architect",
         "cyber risk consultant",
         "risk analytics",
+        "technology risk",
+        "digital assurance",
+        "internal audit",
+        "internal auditor",
+        "it audit",
+        "it auditor",
+        "itgc",
+        "sox compliance",
+        "payments risk",
+        "internal controls",
     ],
     "Digital Enterprise Systems and AI": [
         "erp",
@@ -89,6 +102,14 @@ CONCENTRATION_KEYWORD_FAMILIES: dict[str, list[str]] = {
         "product manager digital platforms",
         "enterprise data management",
         "enterprise digital core",
+        "workday integration",
+        "workday integrations",
+        "erp consultant",
+        "servicenow implementor",
+        "servicenow implementer",
+        "sap supply chain",
+        "erp implementation",
+        "healthcare information systems",
     ],
     "Digital Platforms and Security": [
         "cloud solutions architect",
@@ -146,6 +167,17 @@ STRONG_TITLE_KEYWORDS = [
     "cybersecurity analyst",
     "risk analyst",
     "analytics engineer",
+    # Role titles from the MSIS Industries/Companies/Job Titles list (Apr 2025).
+    "technology risk",
+    "digital assurance",
+    "workday integrations",
+    "sap supply chain analyst",
+    "erp consultant",
+    "servicenow implementor",
+    "servicenow implementer",
+    "technology architect analyst",
+    "internal it auditor",
+    "it auditor",
 ]
 
 EARLY_CAREER_INDICATORS = [
@@ -167,6 +199,8 @@ EARLY_CAREER_INDICATORS = [
     "early-career",
     "graduate program",
     "university program",
+    "rotational program",
+    "corporate finance rotational program",
 ]
 
 TOOL_SKILL_KEYWORDS = [

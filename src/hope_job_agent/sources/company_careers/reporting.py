@@ -353,9 +353,7 @@ def build_quality_audit(
         "career_stages": dict(stage_counts),
         "concentration_counts": dict(concentration_counts),
         "missing_concentration_families": missing_families,
-        "senior_heavy_companies": sorted(
-            senior_heavy, key=lambda item: -item["share"]
-        ),
+        "senior_heavy_companies": sorted(senior_heavy, key=lambda item: -item["share"]),
         "suspicious_generic_titles": generic[:25],
         "zero_kept_companies": zero_kept,
         "low_keep_ratio_companies": low_keep,
@@ -388,9 +386,7 @@ def render_quality_markdown(audit: dict[str, Any]) -> str:
             )
         lines.append("")
     if audit["zero_kept_companies"]:
-        lines.append(
-            f"### Zero kept: {', '.join(audit['zero_kept_companies'])}"
-        )
+        lines.append(f"### Zero kept: {', '.join(audit['zero_kept_companies'])}")
         lines.append("")
     if audit["low_keep_ratio_companies"]:
         lines.append("### High fetched / low kept (<5%)")

@@ -62,7 +62,11 @@ def test_summary_exposes_lamp_coverage_with_backcompat_alias():
 
     coverage = compute_coverage_summary(_config())
     result = CompanyCareersFetchResult(
-        jobs=[], reports=[], raw_count=0, kept_count=0, duplicate_count=0,
+        jobs=[],
+        reports=[],
+        raw_count=0,
+        kept_count=0,
+        duplicate_count=0,
         coverage=coverage,
     )
     summary = result.to_summary()
@@ -76,9 +80,7 @@ def test_coverage_summary_reports_failed_smoke():
         CompanyFetchReport(
             company_name="Verified Co", provider="greenhouse", status="blocked"
         ),
-        CompanyFetchReport(
-            company_name="Extra Co", provider="lever", status="failed"
-        ),
+        CompanyFetchReport(company_name="Extra Co", provider="lever", status="failed"),
     ]
     summary = compute_coverage_summary(_config(), reports)
 

@@ -115,7 +115,7 @@ class CompanyTarget(BaseModel):
         return normalized
 
     @model_validator(mode="after")
-    def _check_verification_consistency(self) -> "CompanyTarget":
+    def _check_verification_consistency(self) -> CompanyTarget:
         # Ranked LAMP-list employers (student_interest_rank set) must be either
         # enabled with a verified endpoint or disabled with an explicit status.
         if (
@@ -152,7 +152,7 @@ class CompanyCareersConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
-    def _reject_duplicate_enabled_endpoints(self) -> "CompanyCareersConfig":
+    def _reject_duplicate_enabled_endpoints(self) -> CompanyCareersConfig:
         """Alias entries must not cause two runtime fetches of one board."""
 
         seen: dict[tuple[str, str, str, str, str], str] = {}

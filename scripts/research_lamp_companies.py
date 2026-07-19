@@ -1316,8 +1316,7 @@ def _verify_smartrecruiters(
     client: HttpClient, c: dict[str, str]
 ) -> VerificationOutcome:
     url = (
-        "https://api.smartrecruiters.com/v1/companies/"
-        f"{c['slug']}/postings?limit=1"
+        "https://api.smartrecruiters.com/v1/companies/" f"{c['slug']}/postings?limit=1"
     )
     return _probe_json(client, "smartrecruiters", url, c, total_key="totalFound")
 
@@ -1442,9 +1441,7 @@ def _probe_json(
                 jobs_total = len(payload[jobs_key])
         elif isinstance(payload.get("items"), list) and payload["items"]:
             first = payload["items"][0]
-            if isinstance(first, dict) and isinstance(
-                first.get("TotalJobsCount"), int
-            ):
+            if isinstance(first, dict) and isinstance(first.get("TotalJobsCount"), int):
                 jobs_total = first["TotalJobsCount"]
 
     status = "verified" if jobs_total is None or jobs_total > 0 else "empty"
@@ -1547,9 +1544,7 @@ def _research_company(
                         for k, v in asdict(detected).items()
                         if k in {"provider", "slug", "host", "tenant", "site"} and v
                     }
-                    coverage.discovered.append(
-                        {**entry, "evidence": detected.evidence}
-                    )
+                    coverage.discovered.append({**entry, "evidence": detected.evidence})
                     if detected.provider == "workday" and not (
                         entry.get("host") and entry.get("site")
                     ):
@@ -1590,9 +1585,7 @@ def _build_report(
         "in_config": sum(1 for c in coverages if c.in_config),
         "enabled_in_config": sum(1 for c in coverages if c.config_enabled),
         "verified_live": sum(1 for c in coverages if c.best_verified),
-        "unsupported_markers_found": sum(
-            1 for c in coverages if c.unsupported_markers
-        ),
+        "unsupported_markers_found": sum(1 for c in coverages if c.unsupported_markers),
         "missing_from_config": [c.company for c in coverages if not c.in_config],
     }
     return {"summary": summary, "companies": entries}
@@ -1639,7 +1632,9 @@ def main() -> int:
         action="store_true",
         help="Skip careers-page HTML discovery; only probe curated candidates",
     )
-    parser.add_argument("--only", default=None, help="Restrict live probes to one company")
+    parser.add_argument(
+        "--only", default=None, help="Restrict live probes to one company"
+    )
     parser.add_argument("--min-interval", type=float, default=1.0)
     return run(parser.parse_args())
 

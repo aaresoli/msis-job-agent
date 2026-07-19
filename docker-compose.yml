@@ -1,52 +1,259 @@
+name: hope-career-intelligence
+
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hope_user}:${POSTGRES_PASSWORD:-hope_password}@postgres:5432/${POSTGRES_DB:-hope_jobs}
+  REDIS_URL: redis://redis:6379/0
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-hope_minio}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-development-only-change-me}
+  MINIO_BUCKET: hope-private-documents
+  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+  OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-}
+  OLLAMA_EMBEDDING_MODEL: embeddinggemma
+  EMBEDDING_DIMENSION: 768
+  EMBEDDING_MODEL: embeddinggemma
+  APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  AUTH_PEPPER: ${AUTH_PEPPER:-development-only-change-me}
+  INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-development-only-change-me}
+  APIFY_WEBHOOK_SECRET: ${APIFY_WEBHOOK_SECRET:-}
+  SOURCE_APPROVAL_ID: ${SOURCE_APPROVAL_ID:-}
+  LANGGRAPH_DATABASE_URL: postgresql://${LANGGRAPH_POSTGRES_USER:-hope_langgraph}:${LANGGRAPH_POSTGRES_PASSWORD:-development-only-change-me}@postgres:5432/${LANGGRAPH_POSTGRES_DB:-hope_langgraph}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+
 services:
   app:
     build: .
-    command: uvicorn hope_job_agent.main:app --host 0.0.0.0 --port 8000 --reload
-    profiles: ["app"]
-    env_file:
-      - .env.example
-    environment:
-      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hope_user}:${POSTGRES_PASSWORD:-hope_password}@postgres:5432/${POSTGRES_DB:-hope_jobs}
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./src:/app/src
+    profiles: ["platform"]
+    environment: *app-environment
+    command: uvicorn hope_job_agent.main:app --host 0.0.0.0 --port 8000
+    expose: ["8000"]
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate: { condition: service_completed_successfully }
+      langgraph-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: alembic upgrade head
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  langgraph-init:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: python -m hope_job_agent.ai.checkpoints
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    build: ./web
+    profiles: ["platform"]
+    environment:
+      HOPE_API_INTERNAL_URL: http://app:8000
+    expose: ["3000"]
+    depends_on:
+      app: { condition: service_healthy }
+    restart: unless-stopped
+
+  worker-interactive:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q interactive --concurrency=2 --loglevel=INFO
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  worker-batch:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=1 --loglevel=INFO
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
 
   postgres:
-    # pgvector-enabled PostgreSQL for local development.
     image: pgvector/pgvector:pg16
     container_name: hope_postgres
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-hope_jobs}
       POSTGRES_USER: ${POSTGRES_USER:-hope_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hope_password}
-    ports:
-      - "5432:5432"
+      LANGGRAPH_POSTGRES_DB: ${LANGGRAPH_POSTGRES_DB:-hope_langgraph}
+      LANGGRAPH_POSTGRES_USER: ${LANGGRAPH_POSTGRES_USER:-hope_langgraph}
+      LANGGRAPH_POSTGRES_PASSWORD: ${LANGGRAPH_POSTGRES_PASSWORD:-development-only-change-me}
+      N8N_POSTGRES_DB: ${N8N_POSTGRES_DB:-hope_n8n}
+      N8N_POSTGRES_USER: ${N8N_POSTGRES_USER:-hope_n8n}
+      N8N_POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:-development-only-change-me}
+      PHOENIX_POSTGRES_DB: ${PHOENIX_POSTGRES_DB:-hope_phoenix}
+      PHOENIX_POSTGRES_USER: ${PHOENIX_POSTGRES_USER:-hope_phoenix}
+      PHOENIX_POSTGRES_PASSWORD: ${PHOENIX_POSTGRES_PASSWORD:-development-only-change-me}
+    ports: ["127.0.0.1:5432:5432"]
     volumes:
       - hope_pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-hope-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hope_user} -d ${POSTGRES_DB:-hope_jobs}"]
       interval: 5s
       timeout: 5s
       retries: 10
+    restart: unless-stopped
 
-  # Optional lightweight DB admin UI. Start explicitly with the "admin" profile:
-  #   docker compose --profile admin up -d pgadmin
-  pgadmin:
-    image: dpage/pgadmin4:latest
-    container_name: hope_pgadmin
-    profiles: ["admin"]
+  redis:
+    image: redis:7.4.2-alpine
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    volumes: ["hope_redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-02-07T23-21-09Z
+    command: server /data --console-address :9001
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
-      PGADMIN_CONFIG_SERVER_MODE: "False"
-    ports:
-      - "5050:80"
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-hope_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-development-only-change-me}
+    ports: ["127.0.0.1:9001:9001"]
+    volumes: ["hope_minio:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.13.3
+    profiles: ["ai"]
+    gpus: all
+    volumes: ["hope_ollama:/root/.ollama"]
+    ports: ["127.0.0.1:11434:11434"]
+    restart: unless-stopped
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.26.8
+    profiles: ["automation"]
+    command: start
+    environment: &n8n-environment
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_DATABASE: ${N8N_POSTGRES_DB:-hope_n8n}
+      DB_POSTGRESDB_USER: ${N8N_POSTGRES_USER:-hope_n8n}
+      DB_POSTGRESDB_PASSWORD: ${N8N_POSTGRES_PASSWORD:-development-only-change-me}
+      EXECUTIONS_MODE: queue
+      QUEUE_BULL_REDIS_HOST: redis
+      QUEUE_BULL_REDIS_DB: 2
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-development-only-change-me}
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_PERSONALIZATION_ENABLED: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+      EXECUTIONS_DATA_MAX_AGE: 336
+      HOPE_INTERNAL_API_URL: http://app:8000/internal/v1
+      HOPE_INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-development-only-change-me}
+    ports: ["127.0.0.1:5678:5678"]
+    volumes:
+      - hope_n8n:/home/node/.n8n
+      - ./n8n/workflows:/workflows:ro
     depends_on:
-      - postgres
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  n8n-worker:
+    image: docker.n8n.io/n8nio/n8n:2.26.8
+    profiles: ["automation"]
+    command: worker --concurrency=5
+    environment: *n8n-environment
+    depends_on:
+      n8n: { condition: service_started }
+    restart: unless-stopped
+
+  phoenix:
+    image: arizephoenix/phoenix:13.5.0
+    profiles: ["observability"]
+    environment:
+      PHOENIX_SQL_DATABASE_URL: postgresql://${PHOENIX_POSTGRES_USER:-hope_phoenix}:${PHOENIX_POSTGRES_PASSWORD:-development-only-change-me}@postgres:5432/${PHOENIX_POSTGRES_DB:-hope_phoenix}
+      PHOENIX_TELEMETRY_ENABLED: "false"
+      PHOENIX_ENABLE_PROMETHEUS: "true"
+      PHOENIX_ENABLE_STRONG_PASSWORD_POLICY: "true"
+      PHOENIX_DEFAULT_ADMIN_INITIAL_PASSWORD: ${PHOENIX_ADMIN_PASSWORD:-development-only-change-me}
+    ports: ["127.0.0.1:6006:6006"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    profiles: ["observability"]
+    command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=30d
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - hope_prometheus:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.4.1
+    profiles: ["observability"]
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./infra/loki/config.yml:/etc/loki/config.yml:ro
+      - hope_loki:/loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.5.1
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-development-only-change-me}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - hope_grafana:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports: ["127.0.0.1:3001:3000"]
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.9.1-alpine
+    profiles: ["edge"]
+    volumes: ["./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    expose: ["8080"]
+    depends_on:
+      web: { condition: service_started }
+      app: { condition: service_healthy }
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:2025.2.1
+    profiles: ["edge"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      caddy: { condition: service_started }
+    restart: unless-stopped
 
 volumes:
   hope_pgdata:
+  hope_redis:
+  hope_minio:
+  hope_ollama:
+  hope_n8n:
+  hope_prometheus:
+  hope_loki:
+  hope_grafana:

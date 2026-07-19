@@ -97,7 +97,10 @@ def test_detect_career_stage_variants():
 def test_msis_role_titles_from_lamp_pdf_are_relevant():
     # Role titles from "Industries_Companies_Job Titles_as of April 14_2025".
     samples = [
-        ("Technology Risk Consultant", "Assess IT general controls and SOX compliance."),
+        (
+            "Technology Risk Consultant",
+            "Assess IT general controls and SOX compliance.",
+        ),
         ("Digital Assurance Associate", "Support digital assurance engagements."),
         ("Workday Integrations Analyst", "Build Workday integration solutions."),
         ("SAP Supply Chain Analyst", "Support SAP supply chain modules."),

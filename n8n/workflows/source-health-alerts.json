@@ -1,0 +1,14 @@
+{
+  "name": "HOPE - Source health alerts",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/Indiana/Indianapolis" },
+  "nodes": [
+    { "id": "hourly", "name": "Hourly", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [240, 300], "parameters": { "rule": { "interval": [{ "field": "hours", "hoursInterval": 1 }] } } },
+    { "id": "health", "name": "Inspect source health", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [500, 300], "parameters": { "method": "GET", "url": "={{$env.HOPE_INTERNAL_API_URL}}/alerts/source-health", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.HOPE_INTERNAL_SERVICE_TOKEN}}" }, { "name": "X-Request-ID", "value": "={{$execution.id}}" }] } } },
+    { "id": "attention", "name": "Needs attention", "type": "n8n-nodes-base.if", "typeVersion": 2.2, "position": [750, 300], "parameters": { "conditions": { "options": { "caseSensitive": true }, "conditions": [{ "leftValue": "={{$json.status}}", "rightValue": "attention", "operator": { "type": "string", "operation": "equals" } }] } } },
+    { "id": "stop", "name": "Report failure", "type": "n8n-nodes-base.stopAndError", "typeVersion": 1, "position": [990, 220], "parameters": { "errorMessage": "=Source health requires attention: {{JSON.stringify($json.failures)}}" } }
+  ],
+  "connections": { "Hourly": { "main": [[{ "node": "Inspect source health", "type": "main", "index": 0 }]] }, "Inspect source health": { "main": [[{ "node": "Needs attention", "type": "main", "index": 0 }]] }, "Needs attention": { "main": [[{ "node": "Report failure", "type": "main", "index": 0 }], []] } },
+  "pinData": {},
+  "versionId": "561b5182-a880-4dca-a421-100000000008"
+}

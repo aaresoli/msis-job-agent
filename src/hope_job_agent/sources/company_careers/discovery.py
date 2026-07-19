@@ -35,7 +35,9 @@ _SUPPORTED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ),
     (
         "lever",
-        re.compile(r"(?:jobs|api)\.lever\.co/(?:v0/postings/)?(?P<slug>[A-Za-z0-9_-]+)"),
+        re.compile(
+            r"(?:jobs|api)\.lever\.co/(?:v0/postings/)?(?P<slug>[A-Za-z0-9_-]+)"
+        ),
     ),
     (
         "ashby",
@@ -73,18 +75,21 @@ _UNSUPPORTED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("icims", re.compile(r"[a-z0-9-]+\.icims\.com")),
     (
         "successfactors",
-        re.compile(r"(?:successfactors\.(?:com|eu)|(?:jobs|careers?)\.sap\.com|rmk\.sf\.)"),
+        re.compile(
+            r"(?:successfactors\.(?:com|eu)|(?:jobs|careers?)\.sap\.com|rmk\.sf\.)"
+        ),
     ),
     ("taleo", re.compile(r"[a-z0-9.]+\.taleo\.net")),
     ("eightfold", re.compile(r"(?:eightfold\.ai|\.jobs\.[a-z0-9-]+\.net/careers)")),
     ("avature", re.compile(r"[a-z0-9-]+\.avature\.net")),
-    ("phenom", re.compile(r"(?:phenompeople\.com|phenom\.com/px|widget\.phenompeople)")),
+    (
+        "phenom",
+        re.compile(r"(?:phenompeople\.com|phenom\.com/px|widget\.phenompeople)"),
+    ),
 ]
 
 # Workday "site" path segments that are locale or infrastructure, not sites.
-_WORKDAY_NON_SITE_SEGMENTS = frozenset(
-    {"wday", "en-us", "job", "jobs", "login", "cxs"}
-)
+_WORKDAY_NON_SITE_SEGMENTS = frozenset({"wday", "en-us", "job", "jobs", "login", "cxs"})
 
 
 @dataclass(frozen=True)
@@ -148,13 +153,13 @@ def detect_ats_candidates(html: str) -> DiscoveryResult:
             result.candidates.append(candidate)
 
     for provider, pattern in _UNSUPPORTED_PATTERNS:
-        match = pattern.search(html)
-        if match is None:
+        unsupported_match = pattern.search(html)
+        if unsupported_match is None:
             continue
         candidate = ATSCandidate(
             provider=provider,
             supported=False,
-            evidence=match.group(0)[:200],
+            evidence=unsupported_match.group(0)[:200],
         )
         if candidate.key() not in seen:
             seen.add(candidate.key())

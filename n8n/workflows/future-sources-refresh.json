@@ -1,0 +1,13 @@
+{
+  "name": "HOPE - Future Denodo and Apify refresh",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/Indiana/Indianapolis" },
+  "nodes": [
+    { "id": "daily", "name": "Daily", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [240, 280], "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 5 }] } } },
+    { "id": "denodo", "name": "Denodo contract", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [500, 220], "parameters": { "method": "POST", "url": "={{$env.HOPE_INTERNAL_API_URL}}/sources/ksbit_denodo/execute", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.HOPE_INTERNAL_SERVICE_TOKEN}}" }, { "name": "Idempotency-Key", "value": "=denodo-{{$now.toISODate()}}" }, { "name": "X-Request-ID", "value": "={{$execution.id}}-denodo" }] }, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={\"limit\":1000}" } },
+    { "id": "apify", "name": "Apify contract", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [500, 360], "parameters": { "method": "POST", "url": "={{$env.HOPE_INTERNAL_API_URL}}/sources/apify_linkedin/execute", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.HOPE_INTERNAL_SERVICE_TOKEN}}" }, { "name": "Idempotency-Key", "value": "=apify-{{$now.toISODate()}}" }, { "name": "X-Request-ID", "value": "={{$execution.id}}-apify" }] }, "sendBody": true, "contentType": "raw", "rawContentType": "application/json", "body": "={\"limit\":1000}" } }
+  ],
+  "connections": { "Daily": { "main": [[{ "node": "Denodo contract", "type": "main", "index": 0 }, { "node": "Apify contract", "type": "main", "index": 0 }]] } },
+  "pinData": {},
+  "versionId": "561b5182-a880-4dca-a421-100000000002"
+}

@@ -225,6 +225,9 @@ class StudentProfileRecord(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True
+    )
     external_student_id: Mapped[str | None] = mapped_column(String(128), unique=True)
     name: Mapped[str | None] = mapped_column(String(256))
     email: Mapped[str | None] = mapped_column(String(256))
@@ -233,6 +236,7 @@ class StudentProfileRecord(Base):
     interests: Mapped[list[str] | None] = mapped_column(JSONB)
     skills: Mapped[list[str] | None] = mapped_column(JSONB)
     profile_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    program_exit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -262,3 +266,8 @@ class JobMatchRecord(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
+    ranking_version: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="hybrid-v1"
+    )
+    confidence: Mapped[float | None] = mapped_column(Float)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="ready")

@@ -10,6 +10,15 @@ from hope_job_agent.db.models import (
     SourceRun,
     StudentProfileRecord,
 )
+from hope_job_agent.db.platform_models import (
+    ApplicationRecord,
+    AuditEvent,
+    ConsentRecord,
+    MarketSignal,
+    ResumeDocument,
+    SharingGrant,
+    User,
+)
 
 __all__ = [
     "Base",
@@ -20,4 +29,11 @@ __all__ = [
     "JobSource",
     "SourceRun",
     "StudentProfileRecord",
+    "ApplicationRecord",
+    "AuditEvent",
+    "ConsentRecord",
+    "MarketSignal",
+    "ResumeDocument",
+    "SharingGrant",
+    "User",
 ]

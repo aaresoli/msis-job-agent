@@ -1,0 +1,12 @@
+{
+  "name": "HOPE - Weekly backup verification",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/Indiana/Indianapolis" },
+  "nodes": [
+    { "id": "weekly", "name": "Weekly", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [260, 300], "parameters": { "rule": { "interval": [{ "field": "weeks", "weeksInterval": 1, "triggerAtHour": 6 }] } } },
+    { "id": "verify", "name": "Record restore verification", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [520, 300], "parameters": { "method": "POST", "url": "={{$env.HOPE_INTERNAL_API_URL}}/backup/verified", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.HOPE_INTERNAL_SERVICE_TOKEN}}" }, { "name": "Idempotency-Key", "value": "=backup-verify-{{$now.toISODate()}}" }, { "name": "X-Request-ID", "value": "={{$execution.id}}" }] } } }
+  ],
+  "connections": { "Weekly": { "main": [[{ "node": "Record restore verification", "type": "main", "index": 0 }]] } },
+  "pinData": {},
+  "versionId": "561b5182-a880-4dca-a421-100000000005"
+}

@@ -23,6 +23,11 @@ jobs:
         run: python -m mypy src
       - name: Tests
         run: python -m pytest
+      - name: Migration and n8n contracts
+        run: |
+          python -m alembic upgrade head --sql > "$RUNNER_TEMP/migration.sql"
+          python scripts/validate_n8n_workflows.py
+          python scripts/import_n8n_workflows.py --check
       - name: MVP pipeline smoke test
         run: |
           python -m hope_job_agent.pipeline.run_mvp \
@@ -32,3 +37,23 @@ jobs:
             --output "$RUNNER_TEMP/mvp_results.csv" \
             --limit 2 \
             --database-url "sqlite:///$RUNNER_TEMP/mvp.sqlite3"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"

@@ -19,8 +19,8 @@ class DatabaseSettings(BaseSettings):
     postgres_db: str = "hope_jobs"
     postgres_user: str = "hope_user"
     postgres_password: SecretStr = SecretStr("hope_password")
-    embedding_dimension: int = Field(default=1536, ge=1)
-    embedding_model: str = "none"
+    embedding_dimension: int = Field(default=768, ge=1)
+    embedding_model: str = "embeddinggemma"
 
     model_config = SettingsConfigDict(
         env_file=".env",

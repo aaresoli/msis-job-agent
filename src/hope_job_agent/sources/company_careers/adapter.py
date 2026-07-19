@@ -122,9 +122,7 @@ def compute_coverage_summary(
     tracked = [c for c in config.companies if c.student_interest_rank is not None]
     failed_statuses = {"failed", "blocked", "robots_disallowed"}
     failed_by_name = {
-        r.company_name
-        for r in (reports or [])
-        if r.status in failed_statuses
+        r.company_name for r in (reports or []) if r.status in failed_statuses
     }
     # Every Excel rank is covered either by its own entry or as a merged alias
     # of a better-ranked canonical entry.
@@ -143,9 +141,7 @@ def compute_coverage_summary(
         "verified_unsupported": sum(
             1 for c in tracked if c.verification_status == "unsupported"
         ),
-        "unverified": sum(
-            1 for c in tracked if c.verification_status == "pending"
-        ),
+        "unverified": sum(1 for c in tracked if c.verification_status == "pending"),
         "failed_live_smoke": sorted(
             c.company_name for c in tracked if c.company_name in failed_by_name
         ),

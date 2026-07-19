@@ -9,7 +9,10 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from hope_job_agent.config.database import get_database_settings, resolve_database_url
-from hope_job_agent.db import models  # noqa: F401
+from hope_job_agent.db import (
+    models,  # noqa: F401
+    platform_models,  # noqa: F401
+)
 from hope_job_agent.db.base import Base
 
 config = context.config

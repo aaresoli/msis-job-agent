@@ -120,6 +120,24 @@ SOURCE_REGISTRY: dict[str, SourceMetadata] = {
         priority=99,
         notes="Do not scrape LinkedIn or automate login workflows.",
     ),
+    "ksbit_denodo": SourceMetadata(
+        name="ksbit_denodo",
+        display_name="KSBIT Denodo API",
+        status=SourceStatus.DISABLED,
+        source_type="institutional_api",
+        access_method="Approved Denodo view and service credentials required.",
+        priority=3,
+        notes="Contract only; enable after the view schema and endpoint are approved.",
+    ),
+    "apify_linkedin": SourceMetadata(
+        name="apify_linkedin",
+        display_name="Apify LinkedIn Jobs and Posts",
+        status=SourceStatus.DISABLED,
+        source_type="third_party_collection",
+        access_method="Approved Apify actor, dataset contract, and webhook only.",
+        priority=99,
+        notes="Disabled until written institutional/legal source approval is recorded.",
+    ),
 }
 
 

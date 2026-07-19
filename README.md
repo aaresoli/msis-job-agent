@@ -1,19 +1,34 @@
 # Kelley HOPE MSIS Job Agent
 
-AI-powered job discovery starter repository for MSIS students and Graduate Career Services.
+Local-first career intelligence for Kelley MSIS students and Graduate Career Services.
 
-This project will eventually support approved job source adapters, shared ingestion and normalization, deduplication, role/concentration classification, ranking, student-facing matching, GCS trend tracking, and digest-style delivery.
+The repository now contains the production-shaped campus pilot: approved-source
+ingestion, hybrid matching, advisory career coaching, application tracking,
+privacy controls, GCS aggregate analytics, automation, and a mobile-first web app.
 
 ## Current Status
 
-This repository is a Sprint 3-ready local baseline. It persists pipeline
-history, normalized jobs, deduped jobs, classifications, ranking scores, and
-match history to local SQLite. It does not perform live job collection from
-restricted or unapproved sources.
+The platform is ready for local deployment and external endpoint mapping. Live
+Denodo, Apify LinkedIn, and Ollama calls remain disabled until their credentials,
+payload fixtures, and approvals are supplied. The existing SQLite CLI remains
+available for offline demos; the web platform uses PostgreSQL and pgvector.
 
 The current code provides:
 
-- Package structure for a FastAPI-ready Python backend
+- FastAPI `/api/v1` student/GCS API with invite-only magic links, CSRF,
+  role checks, sharing grants, audit records, export, and deletion requests
+- PostgreSQL/pgvector system of record plus private MinIO documents and Redis
+  queues, with 768-dimensional `embeddinggemma` metadata
+- Four LangGraph workflows for enrichment, hybrid matching, advisory coaching,
+  and cited Market Pulse signals, with optional PostgreSQL checkpointing
+- Provider-neutral local inference with an Ollama implementation and graceful
+  deterministic/vector fallback
+- Separate interactive and batch Celery queues
+- Nine disabled-by-default, secret-free n8n workflow exports
+- Editorial Next.js PWA for Today, Explore, job dossiers, applications, coach,
+  privacy/profile, notifications, Market Pulse, and aggregate GCS views
+- Docker Compose profiles for the platform, local AI, automation,
+  observability, and a Caddy/Cloudflare edge
 - Safe source adapter interfaces and registry guardrails
 - A compliant local JSON approved-source adapter for v0 ingestion demos
 - A KSBIT-compatible local JSON/CSV/XLSX export adapter for approved exports
@@ -45,7 +60,10 @@ The current code provides:
 
 ## Compliance Notice
 
-Do not add unauthorized scraping, login scraping, CAPTCHA bypassing, proxy rotation, or LinkedIn scraping. Every source implementation must be reviewed and approved before it is added.
+Do not enable unauthorized scraping, login scraping, CAPTCHA bypassing, or proxy
+rotation. Every source implementation must be reviewed and approved before it
+is enabled. The Apify LinkedIn contract additionally requires a recorded
+institutional/legal approval ID.
 
 LinkedIn, Handshake, employer systems, and any third-party job source must be accessed only through official, approved, and compliant methods.
 
@@ -69,6 +87,43 @@ cp .env.example .env
 ```
 
 Never commit real secrets.
+
+## Run the campus platform
+
+The default platform profile starts PostgreSQL, Redis, MinIO, migrations,
+LangGraph checkpoint initialization, FastAPI, workers, and Next.js:
+
+```bash
+cp .env.example .env
+# Replace every development-only secret before any shared deployment.
+docker compose --profile platform up --build
+```
+
+Optional private profiles:
+
+```bash
+docker compose --profile platform --profile automation up -d
+docker compose --profile platform --profile ai up -d
+docker compose --profile platform --profile observability up -d
+```
+
+Only add `--profile edge` after configuring the Caddy host and a Cloudflare
+tunnel token. n8n, Phoenix, Grafana, MinIO, PostgreSQL, Redis, and Ollama bind
+privately or to loopback and must not be added to the public tunnel.
+
+Invite a launch user through the internal API (include unique idempotency and
+request IDs in operational clients), then sign in at `http://localhost:3000`.
+SMTP is required to deliver magic links outside a controlled local test.
+
+Useful verification commands:
+
+```bash
+pytest
+ruff check src tests scripts && black --check src tests scripts && mypy src
+python scripts/validate_n8n_workflows.py
+python scripts/import_n8n_workflows.py  # after the private n8n service is running
+cd web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
+```
 
 ## Database Setup (PostgreSQL + pgvector)
 

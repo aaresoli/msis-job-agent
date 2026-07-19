@@ -1,0 +1,12 @@
+{
+  "name": "HOPE - Nightly reconciliation",
+  "active": false,
+  "settings": { "executionOrder": "v1", "timezone": "America/Indiana/Indianapolis" },
+  "nodes": [
+    { "id": "nightly", "name": "Nightly", "type": "n8n-nodes-base.scheduleTrigger", "typeVersion": 1.2, "position": [260, 300], "parameters": { "rule": { "interval": [{ "field": "days", "daysInterval": 1, "triggerAtHour": 2 }] } } },
+    { "id": "reconcile", "name": "Reconcile missing work", "type": "n8n-nodes-base.httpRequest", "typeVersion": 4.2, "position": [540, 300], "parameters": { "method": "POST", "url": "={{$env.HOPE_INTERNAL_API_URL}}/reconciliation", "sendHeaders": true, "headerParameters": { "parameters": [{ "name": "Authorization", "value": "=Bearer {{$env.HOPE_INTERNAL_SERVICE_TOKEN}}" }, { "name": "Idempotency-Key", "value": "=reconcile-{{$now.toISODate()}}" }, { "name": "X-Request-ID", "value": "={{$execution.id}}" }] } } }
+  ],
+  "connections": { "Nightly": { "main": [[{ "node": "Reconcile missing work", "type": "main", "index": 0 }]] } },
+  "pinData": {},
+  "versionId": "561b5182-a880-4dca-a421-100000000003"
+}

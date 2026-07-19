@@ -10,7 +10,8 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
-COPY pyproject.toml README.md ./
+COPY alembic ./alembic
+COPY alembic.ini pyproject.toml README.md ./
 
 EXPOSE 8000
 

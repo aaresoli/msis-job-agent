@@ -68,9 +68,7 @@ def test_verify_lever_list_payload(transport):
         contains="api.lever.co/v0/postings/acme",
         body=[{"id": "1"}],
     )
-    target = CompanyTarget(
-        company_name="Acme", ats_provider="lever", ats_slug="acme"
-    )
+    target = CompanyTarget(company_name="Acme", ats_provider="lever", ats_slug="acme")
     outcome = verify_target(make_client(transport), target)
     assert outcome.status == "verified"
     assert outcome.jobs_total == 1

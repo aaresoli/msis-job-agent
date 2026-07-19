@@ -1,0 +1,17 @@
+{
+  "name": "HOPE Career Intelligence",
+  "short_name": "HOPE",
+  "start_url": "/today",
+  "display": "standalone",
+  "background_color": "#f2eee4",
+  "theme_color": "#7a170f",
+  "description": "Evidence-led career intelligence for Kelley MSIS students",
+  "icons": [
+    {
+      "src": "/hope-mark.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

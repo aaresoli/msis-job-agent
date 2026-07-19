@@ -216,9 +216,7 @@ def test_quality_audit_flags():
     ]
     assert audit["zero_kept_companies"] == ["Beta"]
     assert audit["low_keep_ratio_companies"][0]["company"] == "Acme"
-    assert "Cybersecurity and Risk Analytics" in audit[
-        "missing_concentration_families"
-    ]
+    assert "Cybersecurity and Risk Analytics" in audit["missing_concentration_families"]
     assert set(audit["samples_by_provider"]) == {"greenhouse", "workday"}
 
 

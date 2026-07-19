@@ -259,6 +259,7 @@ SENIOR_TITLE_KEYWORDS = [
 # Clearly-unrelated domains. Matched against the TITLE to avoid false negatives
 # from incidental mentions in a description.
 UNRELATED_DOMAIN_KEYWORDS = [
+    "data entry",
     "nurse",
     "physician",
     "warehouse associate",

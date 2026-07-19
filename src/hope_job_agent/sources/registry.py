@@ -131,12 +131,21 @@ SOURCE_REGISTRY: dict[str, SourceMetadata] = {
     ),
     "apify_linkedin": SourceMetadata(
         name="apify_linkedin",
-        display_name="Apify LinkedIn Jobs and Posts",
-        status=SourceStatus.DISABLED,
+        display_name="Apify LinkedIn Jobs",
+        status=SourceStatus.APPROVED,
         source_type="third_party_collection",
-        access_method="Approved Apify actor, dataset contract, and webhook only.",
-        priority=99,
-        notes="Disabled until written institutional/legal source approval is recorded.",
+        access_method=(
+            "Apify API v2 with the user-supplied account token. Reads datasets "
+            "of completed actor runs by default; new (paid) actor runs are "
+            "user-invoked only via --apify-trigger-run. No direct LinkedIn "
+            "collection happens in this codebase."
+        ),
+        priority=2,
+        notes=(
+            "Approved for the faculty demo using the project owner's Apify "
+            "account and LinkedIn jobs scraper actor. Token lives in .env as "
+            "APIFY_TOKEN and is never committed."
+        ),
     ),
 }
 

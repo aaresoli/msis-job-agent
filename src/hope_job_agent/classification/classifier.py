@@ -11,6 +11,7 @@ from hope_job_agent.classification.taxonomy import (
     ROLE_TO_CONCENTRATIONS,
     normalize_concentrations,
 )
+from hope_job_agent.classification.career_track import infer_career_track
 from hope_job_agent.classification.work_authorization import detect_work_authorization
 from hope_job_agent.models.job import JobPosting
 
@@ -105,6 +106,7 @@ def classify_job_posting(job: JobPosting) -> JobPosting:
                 classification.concentration_confidence_scores
             ),
             "classification_uncertain": classification.is_uncertain,
+            "career_track": infer_career_track(job),
             "opt_cpt_flag": (
                 job.opt_cpt_flag
                 if job.opt_cpt_flag is not None

@@ -38,6 +38,7 @@ class JobPosting(BaseModel):
     application_deadline: date | None = None
     compensation: str | None = None
     career_stage: str | None = None
+    career_track: str | None = None
     relevance_score: float | None = None
     matched_keywords: list[str] = Field(default_factory=list)
     raw_metadata: dict[str, Any] = Field(default_factory=dict)

@@ -32,6 +32,11 @@ from hope_job_agent.pipeline.deduplicate import deduplicate_jobs
 from hope_job_agent.pipeline.normalize import normalize_job
 from hope_job_agent.pipeline.validate import validate_job
 from hope_job_agent.scoring.ranker import rank_jobs_for_student
+from hope_job_agent.sources.apify_linkedin import (
+    ApifyLinkedInSettings,
+    ApifyLinkedInSource,
+    ApifyLinkedInSourceError,
+)
 from hope_job_agent.sources.approved_json import (
     ApprovedJsonJobSource,
     ApprovedJsonSourceError,
@@ -51,6 +56,7 @@ from hope_job_agent.sources.ksbit_export import (
 from hope_job_agent.sources.registry import (
     SourceComplianceError,
     create_source_adapter,
+    ensure_source_allowed,
 )
 from hope_job_agent.storage import (
     JobStore,
@@ -111,6 +117,7 @@ class SourceLoadResult:
     raw_count: int
     warnings: list[str]
     company_health: dict[str, Any] | None = None
+    apify_health: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +150,10 @@ def run_mvp_pipeline(
     company_config_path: Path | None = None,
     local_source: str = "kelleylink_excel",
     company_source: CompanyCareersSource | None = None,
+    apify_dataset_id: str | None = None,
+    apify_run_id: str | None = None,
+    apify_trigger_run: bool = False,
+    apify_max_items: int | None = None,
     dry_run: bool = False,
     skip_store: bool = False,
     verbose: bool = False,
@@ -176,6 +187,10 @@ def run_mvp_pipeline(
         company_config_path=company_config_path,
         local_source=local_source,
         company_source=company_source,
+        apify_dataset_id=apify_dataset_id,
+        apify_run_id=apify_run_id,
+        apify_trigger_run=apify_trigger_run,
+        apify_max_items=apify_max_items,
     )
     warnings.extend(source_load.warnings)
     _log_warnings(source_load.warnings)
@@ -271,6 +286,7 @@ def run_mvp_pipeline(
         "source_since_date": source_since_date,
         "source_limit": source_limit,
         "company_careers_health": source_load.company_health,
+        "apify_linkedin_health": source_load.apify_health,
         "input_path": None if input_path is None else str(input_path),
         "profiles_path": None if profiles_path is None else str(profiles_path),
         "output_path": str(output_path),
@@ -362,14 +378,21 @@ def _load_source(
     company_config_path: Path | None = None,
     local_source: str = "kelleylink_excel",
     company_source: CompanyCareersSource | None = None,
+    apify_dataset_id: str | None = None,
+    apify_run_id: str | None = None,
+    apify_trigger_run: bool = False,
+    apify_max_items: int | None = None,
 ) -> SourceLoadResult:
     """Load jobs from one or more approved sources.
 
     Supported ``source_name`` values:
 
     * ``company_careers``: fetch public ATS boards from the company config.
-    * ``all``: company_careers plus, when ``input_path`` is provided, a local
-      export loaded with ``local_source`` (defaults to ``kelleylink_excel``).
+    * ``apify_linkedin``: fetch LinkedIn postings collected by the approved
+      Apify actor on the user's account.
+    * ``all``: company_careers plus apify_linkedin (when APIFY_TOKEN is set)
+      plus, when ``input_path`` is provided, a local export loaded with
+      ``local_source`` (defaults to ``kelleylink_excel``).
     * ``approved_json`` / ``ksbit_export`` / ``kelleylink_excel``: local export
       requiring ``input_path``.
     """
@@ -380,6 +403,14 @@ def _load_source(
             company_source=company_source,
         )
 
+    if source_name == "apify_linkedin":
+        return _load_apify_linkedin(
+            dataset_id=apify_dataset_id,
+            run_id=apify_run_id,
+            trigger_run=apify_trigger_run,
+            max_items=apify_max_items,
+        )
+
     if source_name == "all":
         return _load_all_sources(
             input_path=input_path,
@@ -388,6 +419,10 @@ def _load_source(
             company_config_path=company_config_path,
             local_source=local_source,
             company_source=company_source,
+            apify_dataset_id=apify_dataset_id,
+            apify_run_id=apify_run_id,
+            apify_trigger_run=apify_trigger_run,
+            apify_max_items=apify_max_items,
         )
 
     return _load_local_source(
@@ -395,6 +430,43 @@ def _load_source(
         input_path=input_path,
         source_since_date=source_since_date,
         source_limit=source_limit,
+    )
+
+
+def _load_apify_linkedin(
+    *,
+    dataset_id: str | None,
+    run_id: str | None,
+    trigger_run: bool,
+    max_items: int | None,
+    settings: ApifyLinkedInSettings | None = None,
+) -> SourceLoadResult:
+    """Fetch and pre-filter LinkedIn postings from the approved Apify actor."""
+
+    try:
+        ensure_source_allowed("apify_linkedin")
+    except SourceComplianceError as exc:
+        raise MvpPipelineError(str(exc)) from exc
+
+    LOGGER.info("Loading source adapter: apify_linkedin")
+    source = ApifyLinkedInSource(
+        settings=settings,
+        dataset_id=dataset_id,
+        run_id=run_id,
+        trigger_run=trigger_run,
+        max_items=max_items,
+    )
+    try:
+        result = source.fetch_jobs_with_warnings()
+    except ApifyLinkedInSourceError as exc:
+        raise MvpPipelineError(str(exc)) from exc
+
+    return SourceLoadResult(
+        source=source,
+        jobs=result.jobs,
+        raw_count=result.raw_count,
+        warnings=result.warnings,
+        apify_health=result.to_summary(),
     )
 
 
@@ -428,8 +500,12 @@ def _load_all_sources(
     company_config_path: Path | None,
     local_source: str,
     company_source: CompanyCareersSource | None,
+    apify_dataset_id: str | None = None,
+    apify_run_id: str | None = None,
+    apify_trigger_run: bool = False,
+    apify_max_items: int | None = None,
 ) -> SourceLoadResult:
-    """Combine company_careers with an optional local export before dedupe."""
+    """Combine company_careers, apify_linkedin, and an optional local export."""
 
     company = _load_company_careers(
         config_path=company_config_path,
@@ -438,6 +514,28 @@ def _load_all_sources(
     jobs = list(company.jobs)
     raw_count = company.raw_count
     warnings = list(company.warnings)
+
+    apify: SourceLoadResult | None = None
+    apify_settings = ApifyLinkedInSettings()
+    if apify_settings.apify_token.get_secret_value().strip():
+        try:
+            apify = _load_apify_linkedin(
+                dataset_id=apify_dataset_id,
+                run_id=apify_run_id,
+                trigger_run=apify_trigger_run,
+                max_items=apify_max_items,
+                settings=apify_settings,
+            )
+        except MvpPipelineError as exc:
+            warnings.append(f"Source 'all' skipped apify_linkedin: {exc}")
+    else:
+        warnings.append(
+            "Source 'all' skipped apify_linkedin because APIFY_TOKEN is not set."
+        )
+    if apify is not None:
+        jobs.extend(apify.jobs)
+        raw_count += apify.raw_count
+        warnings.extend(apify.warnings)
 
     if input_path is not None:
         local = _load_local_source(
@@ -449,11 +547,6 @@ def _load_all_sources(
         jobs.extend(local.jobs)
         raw_count += local.raw_count
         warnings.extend(local.warnings)
-    else:
-        warnings.append(
-            "Source 'all' ran company_careers only; pass --input with "
-            "--local-source to also include a local export."
-        )
 
     return SourceLoadResult(
         source=company.source,
@@ -461,6 +554,7 @@ def _load_all_sources(
         raw_count=raw_count,
         warnings=warnings,
         company_health=company.company_health,
+        apify_health=apify.apify_health if apify is not None else None,
     )
 
 
@@ -822,7 +916,7 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         help=(
             "Approved source: approved_json, ksbit_export, kelleylink_excel, "
-            "company_careers, or all."
+            "company_careers, apify_linkedin, or all."
         ),
     )
     parser.add_argument(
@@ -851,6 +945,34 @@ def _build_parser() -> argparse.ArgumentParser:
             "For --source all, the local export adapter to combine with "
             "company_careers. Defaults to kelleylink_excel."
         ),
+    )
+    parser.add_argument(
+        "--apify-run-id",
+        default=None,
+        help=(
+            "For apify_linkedin/all, read the dataset of this specific Apify "
+            "actor run instead of the latest successful run."
+        ),
+    )
+    parser.add_argument(
+        "--apify-dataset-id",
+        default=None,
+        help="For apify_linkedin/all, read this Apify dataset id directly.",
+    )
+    parser.add_argument(
+        "--apify-trigger-run",
+        action="store_true",
+        help=(
+            "For apify_linkedin/all, start a NEW paid Apify actor run with "
+            "MSIS-tuned keywords and wait for it to finish. Charges the "
+            "configured Apify account; off by default."
+        ),
+    )
+    parser.add_argument(
+        "--apify-max-items",
+        type=int,
+        default=None,
+        help="For apify_linkedin/all, maximum dataset items to download.",
     )
     parser.add_argument(
         "--profiles",
@@ -965,6 +1087,10 @@ def main(argv: Sequence[str] | None = None) -> None:
             source_limit=args.source_limit,
             company_config_path=args.company_config,
             local_source=args.local_source,
+            apify_dataset_id=args.apify_dataset_id,
+            apify_run_id=args.apify_run_id,
+            apify_trigger_run=args.apify_trigger_run,
+            apify_max_items=args.apify_max_items,
             dry_run=args.dry_run,
             skip_store=args.skip_store,
             verbose=args.verbose,
@@ -1001,6 +1127,14 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
         if health.get("failed_companies"):
             print(f"  Failed companies: {', '.join(health['failed_companies'])}")
+    apify_health = summary.get("apify_linkedin_health")
+    if apify_health:
+        print(
+            "Apify LinkedIn: "
+            f"run={apify_health['run_id']} dataset={apify_health['dataset_id']} "
+            f"fetched={apify_health['raw_count']} kept={apify_health['kept_count']} "
+            f"skipped_relevance={apify_health['skipped_by_relevance']}"
+        )
     print(f"Profiles: {summary['profile_count']}")
     print(f"Ranked matches: {summary['total_ranked_matches']}")
     print(

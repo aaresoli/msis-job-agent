@@ -18,7 +18,12 @@ from hope_job_agent.ai.graphs import (
     stream_coach_reply,
 )
 from hope_job_agent.ai.provider import DisabledModelProvider, ModelHealth
-from hope_job_agent.ai.ranking import compose_hybrid_score
+from hope_job_agent.ai.ranking import (
+    HybridWeights,
+    HybridWeightsConfigError,
+    compose_hybrid_score,
+    load_hybrid_weights,
+)
 from hope_job_agent.main import app
 from hope_job_agent.platform import rate_limit
 from hope_job_agent.platform.settings import PlatformSettings
@@ -81,6 +86,43 @@ def test_hybrid_policy_and_degraded_fallback_weights() -> None:
     fallback = compose_hybrid_score(rule_score=20, vector_score=0.5, llm_score=None)
     assert fallback.final == pytest.approx(78.125)
     assert fallback.degraded is True
+
+
+def test_degraded_weights_are_derived_from_the_configured_blend() -> None:
+    """The fallback split must follow the primary weights, not shadow them."""
+
+    rule_weight, vector_weight = HybridWeights(
+        rule=0.45, vector=0.35, llm=0.20
+    ).without_llm()
+    assert rule_weight == pytest.approx(0.5625)
+    assert vector_weight == pytest.approx(0.4375)
+    assert rule_weight + vector_weight == pytest.approx(1.0)
+
+
+def test_hybrid_weights_reject_a_blend_that_does_not_sum_to_one() -> None:
+    with pytest.raises(HybridWeightsConfigError, match="must sum to 1.0"):
+        HybridWeights(rule=0.5, vector=0.5, llm=0.5)
+    with pytest.raises(HybridWeightsConfigError, match="must not be negative"):
+        HybridWeights(rule=1.2, vector=-0.2, llm=0.0)
+
+
+def test_shipped_hybrid_weights_config_is_valid() -> None:
+    assert load_hybrid_weights() == HybridWeights(rule=0.45, vector=0.35, llm=0.20)
+
+
+def test_hybrid_weights_config_rejects_unknown_and_missing_keys(tmp_path) -> None:
+    bad = tmp_path / "hybrid_weights.json"
+    bad.write_text(json.dumps({"rule": 0.5, "vector": 0.5, "typo": 0.0}))
+    with pytest.raises(HybridWeightsConfigError, match="missing=.*extra="):
+        load_hybrid_weights(bad)
+
+
+def test_custom_blend_changes_the_score(tmp_path) -> None:
+    vector_only = HybridWeights(rule=0.0, vector=1.0, llm=0.0)
+    score = compose_hybrid_score(
+        rule_score=0, vector_score=0.5, llm_score=0.9, weights=vector_only
+    )
+    assert score.final == pytest.approx(50.0)
 
 
 def test_match_graph_survives_ollama_outage() -> None:

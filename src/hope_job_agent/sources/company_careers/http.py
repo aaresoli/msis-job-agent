@@ -1,9 +1,14 @@
-"""Polite, dependency-light HTTP client for public ATS job boards.
+"""Polite HTTP client for public ATS job boards.
 
-This module intentionally uses only the Python standard library so the source
-runs and tests hermetically without adding ``httpx``/``requests`` to the runtime
-dependency set. All network access flows through a small ``Transport`` protocol,
-which tests replace with an in-memory fake so no test ever touches a live site.
+All network access flows through a small ``Transport`` protocol, which tests
+replace with an in-memory fake so no test ever touches a live site. The default
+transport is backed by a shared, pooled ``httpx.Client``.
+
+The retry loop lives here rather than in httpx's transport-level retries,
+because it has to react to *status codes* (429 and 5xx are retryable, 401/403
+mean the source is blocking us and should be disabled) and because each attempt
+must pass back through the per-host rate limiter. httpx only retries connection
+failures and knows nothing about either rule.
 
 Politeness features required by the project compliance rules:
 
@@ -22,12 +27,13 @@ from __future__ import annotations
 import json
 import logging
 import time
-import urllib.error
-import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
+from functools import lru_cache
 from typing import Any, Protocol
 from urllib.parse import urlsplit
+
+import httpx
 
 LOGGER = logging.getLogger(__name__)
 
@@ -91,8 +97,39 @@ class Transport(Protocol):
         """Perform one HTTP request and return the response."""
 
 
-class UrllibTransport:
-    """Default transport backed by ``urllib.request`` (standard library)."""
+@lru_cache(maxsize=1)
+def _pooled_client() -> httpx.Client:
+    """Return the process-wide connection pool for ATS fetches.
+
+    A full sweep issues many sequential requests against the same few hosts.
+    Sharing one pool lets those reuse an established TCP and TLS connection
+    instead of paying a fresh handshake per request, which is where the old
+    ``urllib`` transport spent most of its wall time.
+
+    Per-request timeouts still override the value set here.
+    """
+
+    return httpx.Client(
+        follow_redirects=True,
+        limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        timeout=httpx.Timeout(DEFAULT_TIMEOUT_SECONDS, connect=5.0),
+    )
+
+
+class HttpxTransport:
+    """Default transport backed by a pooled :class:`httpx.Client`.
+
+    Error statuses are returned rather than raised: the retry policy in
+    :class:`HttpClient` inspects the status code to decide between retrying,
+    disabling the source, and passing the response through.
+    """
+
+    def __init__(self, client: httpx.Client | None = None) -> None:
+        self._client = client
+
+    @property
+    def client(self) -> httpx.Client:
+        return self._client or _pooled_client()
 
     def request(
         self,
@@ -103,45 +140,26 @@ class UrllibTransport:
         body: bytes | None,
         timeout: float,
     ) -> HttpResponse:
-        request = (
-            urllib.request.Request(  # noqa: S310 - https/http only, validated below
-                url,
-                data=body,
-                method=method,
-                headers=dict(headers),
-            )
-        )
         scheme = urlsplit(url).scheme.lower()
         if scheme not in {"http", "https"}:
             raise HttpError(f"Unsupported URL scheme for fetch: {scheme}")
         try:
-            with urllib.request.urlopen(
-                request, timeout=timeout
-            ) as response:  # noqa: S310
-                charset = response.headers.get_content_charset() or "utf-8"
-                raw = response.read()
-                return HttpResponse(
-                    status_code=int(getattr(response, "status", 200) or 200),
-                    url=response.geturl(),
-                    text=raw.decode(charset, errors="replace"),
-                    headers={key: value for key, value in response.headers.items()},
-                )
-        except urllib.error.HTTPError as exc:  # noqa: PERF203 - explicit handling
-            charset = "utf-8"
-            try:
-                body_text = exc.read().decode(charset, errors="replace")
-            except Exception:  # pragma: no cover - defensive
-                body_text = ""
-            return HttpResponse(
-                status_code=int(exc.code),
-                url=url,
-                text=body_text,
-                headers={key: value for key, value in (exc.headers or {}).items()},
+            response = self.client.request(
+                method,
+                url,
+                headers=dict(headers),
+                content=body,
+                timeout=timeout,
             )
-        except urllib.error.URLError as exc:
-            raise HttpError(f"Network error fetching {url}: {exc.reason}") from exc
-        except (TimeoutError, OSError) as exc:
+        except httpx.HTTPError as exc:
             raise HttpError(f"Network error fetching {url}: {exc}") from exc
+        return HttpResponse(
+            status_code=response.status_code,
+            # The post-redirect URL, matching urllib's geturl().
+            url=str(response.url),
+            text=response.text,
+            headers=dict(response.headers),
+        )
 
 
 class RateLimiter:
@@ -190,7 +208,7 @@ class HttpClient:
         min_interval_seconds: float = DEFAULT_MIN_INTERVAL_SECONDS,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        self.transport = transport or UrllibTransport()
+        self.transport = transport or HttpxTransport()
         self.user_agent = user_agent
         self.timeout_seconds = timeout_seconds
         self.max_retries = max(0, max_retries)

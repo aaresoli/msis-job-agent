@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from hope_job_agent.dashboard.service import (
+from hope_job_agent.discovery.service import (
     MAX_POSTING_AGE_DAYS,
     JobQuery,
     apply_filters,

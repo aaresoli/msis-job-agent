@@ -15,6 +15,7 @@ from hope_job_agent.api import (
     applications,
     auth,
     coach,
+    discovery,
     gcs,
     internal,
     jobs,
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
     application.include_router(auth.router, prefix="/api/v1")
     application.include_router(student.router, prefix="/api/v1")
     application.include_router(jobs.router, prefix="/api/v1")
+    application.include_router(discovery.router, prefix="/api/v1")
     application.include_router(applications.router, prefix="/api/v1")
     application.include_router(coach.router, prefix="/api/v1")
     application.include_router(market.router, prefix="/api/v1")

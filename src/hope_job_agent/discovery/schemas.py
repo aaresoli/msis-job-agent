@@ -1,15 +1,14 @@
-"""Response models for the demo dashboard API."""
+"""Response models for the discovery API."""
 
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class JobCard(BaseModel):
-    """Compact posting shape rendered as a card in the dashboard grid."""
+    """Compact posting shape rendered as a card in the jobs grid."""
 
     job_key: str
     title: str
@@ -91,32 +90,6 @@ class StatsResponse(BaseModel):
     latest_run: LatestRun | None = None
 
 
-class ProfileSummary(BaseModel):
-    student_id: str
-    name: str
-    concentration: str
-    academic_stage: str | None = None
-    target_roles: list[str] = Field(default_factory=list)
-    skills: list[str] = Field(default_factory=list)
-    work_auth_status: str | None = None
-    needs_cpt_opt: bool = False
-    geo_preference: list[str] = Field(default_factory=list)
-    remote_preference: str | None = None
-
-
-class RankedJob(BaseModel):
-    job: JobCard
-    score: float
-    reasons: list[str] = Field(default_factory=list)
-    score_breakdown: dict[str, Any] = Field(default_factory=dict)
-
-
-class MatchesResponse(BaseModel):
-    profile: ProfileSummary
-    total: int
-    matches: list[RankedJob]
-
-
 class TaxonomyEntry(BaseModel):
     name: str
     code: str
@@ -126,14 +99,6 @@ class TaxonomyResponse(BaseModel):
     concentrations: list[TaxonomyEntry]
     roles: list[str]
     tracks: list[str]
-
-
-class HealthResponse(BaseModel):
-    status: str
-    db_path: str
-    db_exists: bool
-    job_count: int
-    latest_run_at: str | None = None
 
 
 # --- LinkedIn hiring posts -------------------------------------------------

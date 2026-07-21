@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from hope_job_agent.dashboard.posts_service import (
+from hope_job_agent.discovery.posts_service import (
     MarketPostView,
     PostQuery,
     PostSignalView,

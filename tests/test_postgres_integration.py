@@ -78,6 +78,11 @@ def test_job_repository_upsert_and_duplicate_detection(session_factory):
         )
         assert duplicate is not None
         assert duplicate.id == first.id
+        # The dashboard reads the full payload, not the flattened columns.
+        assert first.job_json is not None
+        assert first.job_json["title"] == job.title
+        assert first.job_json["concentration_tags"] == job.concentration_tags
+        assert "career_track" in first.job_json
 
 
 @pytest.mark.postgres

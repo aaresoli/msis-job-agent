@@ -78,6 +78,10 @@
 
 * { box-sizing: border-box; }
 
+/* Author display rules (e.g. .drawer { display: flex }) would otherwise beat
+   the UA stylesheet's [hidden] handling and keep "hidden" panels visible. */
+[hidden] { display: none !important; }
+
 html, body {
   margin: 0;
   padding: 0;
@@ -262,6 +266,7 @@ input, select { font: inherit; color: inherit; }
 .legend-count { color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .source-block { display: flex; flex-direction: column; gap: 7px; align-items: flex-start; }
+.source-note { font-size: 11px; color: var(--muted); max-width: 320px; }
 
 .source-chips { display: flex; flex-wrap: wrap; gap: 6px; max-width: 320px; }
 
@@ -450,7 +455,17 @@ input, select { font: inherit; color: inherit; }
   cursor: pointer;
 }
 
-.card:hover { transform: translateY(-2px); border-color: var(--muted); }
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--muted);
+  box-shadow: var(--shadow), 0 10px 28px var(--ring);
+}
+
+.card:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
 
 .card-top { display: flex; gap: 11px; align-items: flex-start; }
 
@@ -484,7 +499,7 @@ input, select { font: inherit; color: inherit; }
 
 .job-title {
   margin: 0;
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: -0.01em;
   line-height: 1.3;
@@ -510,6 +525,7 @@ input, select { font: inherit; color: inherit; }
 
 .meta-row { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--muted); }
 .meta-row span { display: inline-flex; align-items: center; gap: 5px; }
+.meta-row .loc { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; }
 
 .badge-row { display: flex; flex-wrap: wrap; gap: 5px; }
 
@@ -525,10 +541,37 @@ input, select { font: inherit; color: inherit; }
 }
 
 .badge.src { border-color: transparent; background: var(--surface-2); color: var(--ink); }
-.badge.linkedin { background: rgba(10, 102, 194, 0.12); color: #0a66c2; border-color: transparent; }
-:root[data-theme="dark"] .badge.linkedin { background: rgba(57, 135, 229, 0.18); color: #6db1ff; }
+
+/* Per-provider source tints: soft background + strong text in both themes. */
+.badge.src-linkedin { background: rgba(10, 102, 194, 0.12); color: #0a66c2; }
+.badge.src-greenhouse { background: rgba(16, 122, 71, 0.12); color: #0e7c46; }
+.badge.src-lever { background: rgba(75, 85, 160, 0.12); color: #4b55a0; }
+.badge.src-ashby { background: rgba(112, 70, 190, 0.12); color: #6d3fc0; }
+.badge.src-workday { background: rgba(210, 105, 20, 0.13); color: #b35a0a; }
+.badge.src-oraclecloud { background: rgba(199, 70, 52, 0.12); color: #c14634; }
+.badge.src-smartrecruiters { background: rgba(0, 130, 145, 0.12); color: #00828f; }
+.badge.src-kelleylink { background: rgba(153, 0, 0, 0.1); color: #990000; }
+.badge.src-curated { background: var(--accent-soft); color: var(--accent); }
+
+:root[data-theme="dark"] .badge.src-linkedin { background: rgba(57, 135, 229, 0.18); color: #6db1ff; }
+:root[data-theme="dark"] .badge.src-greenhouse { background: rgba(35, 160, 100, 0.2); color: #4fd694; }
+:root[data-theme="dark"] .badge.src-lever { background: rgba(112, 122, 210, 0.2); color: #a5adf0; }
+:root[data-theme="dark"] .badge.src-ashby { background: rgba(140, 100, 220, 0.2); color: #c0a4f5; }
+:root[data-theme="dark"] .badge.src-workday { background: rgba(228, 130, 45, 0.2); color: #f0a45e; }
+:root[data-theme="dark"] .badge.src-oraclecloud { background: rgba(228, 100, 82, 0.2); color: #f2907f; }
+:root[data-theme="dark"] .badge.src-smartrecruiters { background: rgba(20, 165, 180, 0.2); color: #5fd6e0; }
+:root[data-theme="dark"] .badge.src-kelleylink { background: rgba(232, 106, 106, 0.16); color: #e88a8a; }
+:root[data-theme="dark"] .badge.src-curated { background: var(--accent-soft); color: var(--accent); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .badge.linkedin { background: rgba(57, 135, 229, 0.18); color: #6db1ff; }
+  :root:not([data-theme="light"]) .badge.src-linkedin { background: rgba(57, 135, 229, 0.18); color: #6db1ff; }
+  :root:not([data-theme="light"]) .badge.src-greenhouse { background: rgba(35, 160, 100, 0.2); color: #4fd694; }
+  :root:not([data-theme="light"]) .badge.src-lever { background: rgba(112, 122, 210, 0.2); color: #a5adf0; }
+  :root:not([data-theme="light"]) .badge.src-ashby { background: rgba(140, 100, 220, 0.2); color: #c0a4f5; }
+  :root:not([data-theme="light"]) .badge.src-workday { background: rgba(228, 130, 45, 0.2); color: #f0a45e; }
+  :root:not([data-theme="light"]) .badge.src-oraclecloud { background: rgba(228, 100, 82, 0.2); color: #f2907f; }
+  :root:not([data-theme="light"]) .badge.src-smartrecruiters { background: rgba(20, 165, 180, 0.2); color: #5fd6e0; }
+  :root:not([data-theme="light"]) .badge.src-kelleylink { background: rgba(232, 106, 106, 0.16); color: #e88a8a; }
+  :root:not([data-theme="light"]) .badge.src-curated { background: var(--accent-soft); color: var(--accent); }
 }
 .badge.intern { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
 .badge.optcpt { background: var(--good-soft); color: var(--good); border-color: transparent; }
@@ -642,7 +685,38 @@ input, select { font: inherit; color: inherit; }
 .drawer-title { margin: 0; font-size: 19px; font-weight: 800; letter-spacing: -0.015em; line-height: 1.25; }
 .drawer-company { color: var(--ink-2); font-size: 13.5px; margin-top: 2px; }
 
-.drawer-badges { margin: 10px 0 14px; }
+.drawer-badges { margin: 10px 0 8px; }
+
+.drawer-source {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 14px;
+  padding: 6px 10px;
+  border: 1px dashed var(--hairline);
+  border-radius: 8px;
+  background: var(--page);
+}
+
+.why-panel { margin-bottom: 18px; }
+.why-panel h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.kw-row { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.kw-chip {
+  font-size: 11.5px;
+  font-weight: 600;
+  border: 1px solid var(--hairline);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 3px 10px;
+  color: var(--ink-2);
+}
 
 .match-panel {
   border: 1px solid var(--hairline);
@@ -719,5 +793,87 @@ input, select { font: inherit; color: inherit; }
   .layout { grid-template-columns: 1fr; }
   .sidebar { position: static; max-height: none; }
   .topbar { flex-wrap: wrap; }
-  .track-toggle { order: 3; width: 100%; justify-content: center; }
+  .topbar-center { order: 3; width: 100%; justify-content: center; }
 }
+
+/* ---------- Jobs / Posts view toggle ---------- */
+
+.topbar-center {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.view-toggle {
+  display: flex;
+  background: var(--surface-2);
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.view-btn {
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  padding: 7px 18px;
+  font-weight: 600;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.view-btn:hover { color: var(--ink); }
+
+.view-btn[aria-selected="true"] {
+  background: var(--ink);
+  color: var(--surface);
+}
+
+.view-count {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Post cards ---------- */
+
+.post-card .post-excerpt {
+  margin: 2px 0 0;
+  font-size: 12.8px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.badge.opportunity {
+  background: var(--good-soft);
+  color: var(--good);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.post-signal-hint {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--ink-2);
+  background: var(--good-soft);
+  border-radius: 9px;
+  padding: 7px 9px;
+}
+
+.post-signal-hint .post-signal-icon { flex-shrink: 0; }
+
+#company-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

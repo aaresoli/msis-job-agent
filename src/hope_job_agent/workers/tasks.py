@@ -5,7 +5,10 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
+import tempfile
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 from uuid import UUID
 
 from docx import Document
@@ -47,12 +50,34 @@ from hope_job_agent.db.session import (
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.student import StudentProfile
 from hope_job_agent.persistence.embedding_repository import EmbeddingRepository
+from hope_job_agent.persistence.source_run_repository import SourceRunRepository
+from hope_job_agent.pipeline.run_mvp import MvpPipelineError, run_mvp_pipeline
+from hope_job_agent.pipeline.run_posts import ingest_market_posts
 from hope_job_agent.platform.documents import (
     delete_private_document,
     get_private_document,
 )
 from hope_job_agent.scoring.ranker import rank_jobs_for_student
+from hope_job_agent.sources.apify_linkedin_posts import (
+    SOURCE_NAME as POSTS_SOURCE_NAME,
+)
+from hope_job_agent.sources.registry import (
+    SourceComplianceError,
+    ensure_source_allowed,
+)
 from hope_job_agent.workers.celery_app import celery_app
+
+LOGGER = logging.getLogger(__name__)
+
+# Sources the scheduler is allowed to refresh unattended. Everything else in
+# the registry is either a local-file export (needs an operator-supplied path)
+# or not approved for automated collection.
+REFRESHABLE_SOURCES = frozenset({"company_careers", "apify_linkedin"})
+
+# ``source_name`` of the parent run recorded by :func:`refresh_all`. Each source
+# in the sweep still writes its own child run, so source-health views can filter
+# this aggregate out.
+ORCHESTRATOR_SOURCE = "refresh_all"
 
 
 def _factory():
@@ -118,6 +143,82 @@ def enrich_job(job_id: str) -> dict:
         return {"status": row.status, "job_id": job_id}
 
 
+@celery_app.task(
+    bind=True,
+    name="hope.sources.refresh",
+    acks_late=False,
+    max_retries=0,
+    time_limit=5400,
+    soft_time_limit=5100,
+)
+def refresh_source(
+    self,  # noqa: ANN001 - Celery binds the task instance
+    source_name: str,
+    limit: int | None = None,
+    dry_run: bool = False,
+    full_refresh: bool = False,
+) -> dict:
+    """Run the ingestion pipeline for one approved source into Postgres.
+
+    Retries are disabled: a crawl is expensive and partially-applied work is
+    already persisted, so a failed run is recorded as a failed ``SourceRun``
+    (which drives the source-health alert) and left for the next schedule.
+    """
+
+    if source_name not in REFRESHABLE_SOURCES:
+        return {
+            "source": source_name,
+            "status": "rejected",
+            "reason": (
+                f"'{source_name}' is not refreshable on a schedule. "
+                f"Allowed: {', '.join(sorted(REFRESHABLE_SOURCES))}."
+            ),
+        }
+    try:
+        ensure_source_allowed(source_name)
+    except SourceComplianceError as exc:
+        return {"source": source_name, "status": "disabled", "reason": str(exc)}
+
+    with tempfile.TemporaryDirectory(prefix=f"hope-refresh-{source_name}-") as tmpdir:
+        try:
+            result = run_mvp_pipeline(
+                source_name=source_name,
+                profiles_path=None,
+                output_path=Path(tmpdir) / "jobs.json",
+                limit=limit,
+                dry_run=dry_run,
+                full_refresh=full_refresh,
+                storage="postgres",
+            )
+        except MvpPipelineError as exc:
+            _record_failed_source_run(source_name, str(exc))
+            raise
+
+    summary = result.summary
+    return {
+        "source": source_name,
+        "status": "completed",
+        "task_id": self.request.id,
+        "run_id": summary["run_id"],
+        "raw_count": summary["raw_count"],
+        "unique_count": summary["unique_count"],
+        "duplicate_count": summary.get("duplicate_count", 0),
+        "warnings": len(summary["warnings"]),
+    }
+
+
+def _record_failed_source_run(source_name: str, error: str) -> None:
+    """Persist a failed SourceRun so source-health alerts can see the failure."""
+
+    try:
+        with session_scope(_factory()) as db:
+            runs = SourceRunRepository(db)
+            run = runs.start_run(source_name, metadata={"trigger": "scheduled"})
+            runs.fail_run(run.id, error[:4096])
+    except Exception:  # noqa: BLE001 - never mask the original pipeline failure
+        LOGGER.exception("Could not record failed source run for %s", source_name)
+
+
 @celery_app.task(name="hope.enrichment.resume")
 def parse_resume(resume_id: str) -> dict:
     with session_scope(_factory()) as db:
@@ -168,6 +269,232 @@ def parse_resume(resume_id: str) -> dict:
             resume.parse_status = "awaiting_local_ai"
             resume.parsed_profile = {"warning": str(exc)}
         return {"status": resume.parse_status, "resume_id": resume_id}
+
+
+@celery_app.task(name="hope.sources.refresh_posts")
+def refresh_posts(
+    dataset_id: str | None = None,
+    run_id: str | None = None,
+    trigger_run: bool = False,
+    max_items: int | None = None,
+    enqueue_pulse: bool = True,
+) -> dict:
+    """Fetch LinkedIn hiring posts from Apify and refresh market signals.
+
+    Runs on the ``ingest`` queue. Ingests MSIS-relevant posts into
+    ``market_posts`` then enqueues :func:`refresh_market_pulse` so the LLM
+    signal extraction picks up the new posts. :func:`refresh_all` passes
+    ``enqueue_pulse=False`` because it runs the pulse itself once every source
+    has landed.
+    """
+
+    with session_scope(_factory()) as db:
+        outcome = ingest_market_posts(
+            db,
+            dataset_id=dataset_id,
+            run_id=run_id,
+            trigger_run=trigger_run,
+            max_items=max_items,
+        )
+    if enqueue_pulse and (outcome["inserted"] or outcome["updated"]):
+        refresh_market_pulse.apply_async(countdown=2)
+    return {"status": "completed", **outcome}
+
+
+@celery_app.task(
+    bind=True,
+    name="hope.sources.refresh_all",
+    acks_late=False,
+    max_retries=0,
+    time_limit=10800,
+    soft_time_limit=10500,
+)
+def refresh_all(
+    self,  # noqa: ANN001 - Celery binds the task instance
+    sources: list[str] | None = None,
+    limit: int | None = None,
+    dry_run: bool = False,
+    full_refresh: bool = False,
+    include_posts: bool = True,
+    posts_dataset_id: str | None = None,
+    posts_run_id: str | None = None,
+    posts_trigger_run: bool = False,
+    posts_max_items: int | None = None,
+    refresh_signals: bool = True,
+) -> dict:
+    """Refresh every scheduled source in one sweep and record a parent run.
+
+    Jobs (``job_postings``) and posts (``market_posts``) keep their separate
+    tables, dedup rules, and lifecycles; this task only sequences them:
+
+    1. each approved job source runs through :func:`refresh_source`,
+    2. LinkedIn posts run through :func:`refresh_posts`,
+    3. every source upserts into Postgres independently — one failure is
+       recorded and the sweep continues,
+    4. a single ``refresh_all`` :class:`SourceRun` aggregates the per-source
+       results (each source also keeps its own child run), and
+    5. market signals are re-extracted once, after all posts have landed.
+
+    Dashboard snapshots are TTL-cached inside the web process, so they pick the
+    new rows up on their own — there is no cache for the worker to invalidate.
+    """
+
+    selected = list(sources) if sources is not None else sorted(REFRESHABLE_SOURCES)
+    started = datetime.now(UTC)
+    parent_run_id = _start_orchestrator_run(
+        {
+            "trigger": "refresh_all",
+            "task_id": self.request.id,
+            "sources": selected,
+            "include_posts": include_posts,
+        }
+    )
+
+    results = [
+        _refresh_job_source(
+            source_name,
+            limit=limit,
+            dry_run=dry_run,
+            full_refresh=full_refresh,
+        )
+        for source_name in selected
+    ]
+    if include_posts:
+        results.append(
+            _refresh_posts_source(
+                dataset_id=posts_dataset_id,
+                run_id=posts_run_id,
+                trigger_run=posts_trigger_run,
+                max_items=posts_max_items,
+            )
+        )
+
+    signals: dict | None = None
+    if refresh_signals and any(
+        result.get("inserted") or result.get("updated")
+        for result in results
+        if result["kind"] == "posts"
+    ):
+        signals = _refresh_signals()
+
+    errors = [
+        f"{result['source']}: {result['error']}"
+        for result in results
+        if result["status"] == "failed"
+    ]
+    all_failed = bool(errors) and not any(
+        result["status"] == "completed" for result in results
+    )
+    summary = {
+        "trigger": "refresh_all",
+        "sources": results,
+        "signals": signals,
+        "raw_count": sum(int(result.get("raw_count") or 0) for result in results),
+        "duplicate_count": sum(
+            int(result.get("duplicate_count") or 0) for result in results
+        ),
+        "errors": errors,
+        "runtime_seconds": round(
+            (datetime.now(UTC) - started).total_seconds(),
+            3,
+        ),
+    }
+    _finish_orchestrator_run(parent_run_id, summary, failed=all_failed)
+
+    if all_failed:
+        status = "failed"
+    elif errors:
+        status = "partial_success"
+    else:
+        status = "completed"
+    return {
+        "status": status,
+        "task_id": self.request.id,
+        "run_id": None if parent_run_id is None else str(parent_run_id),
+        "sources": results,
+        "signals": signals,
+        "errors": errors,
+    }
+
+
+def _refresh_job_source(source_name: str, **options) -> dict:  # noqa: ANN003
+    """Run one job source, converting a crash into a recorded per-source failure."""
+
+    try:
+        return {"kind": "jobs", **refresh_source.run(source_name, **options)}
+    except Exception as exc:  # noqa: BLE001 - one bad source must not stop the sweep
+        LOGGER.exception("refresh_all: source %s failed", source_name)
+        return {
+            "source": source_name,
+            "kind": "jobs",
+            "status": "failed",
+            "error": str(exc)[:4096],
+        }
+
+
+def _refresh_posts_source(**options) -> dict:  # noqa: ANN003
+    """Run the LinkedIn posts ingest, deferring signal extraction to the sweep."""
+
+    try:
+        outcome = refresh_posts.run(enqueue_pulse=False, **options)
+        return {
+            "kind": "posts",
+            # Posts count their fetch under "fetch"; lift it so the parent run
+            # can aggregate raw_count the same way across jobs and posts.
+            "raw_count": (outcome.get("fetch") or {}).get("raw_count", 0),
+            **outcome,
+        }
+    except Exception as exc:  # noqa: BLE001 - see _refresh_job_source
+        LOGGER.exception("refresh_all: posts ingest failed")
+        return {
+            "source": POSTS_SOURCE_NAME,
+            "kind": "posts",
+            "status": "failed",
+            "error": str(exc)[:4096],
+        }
+
+
+def _refresh_signals() -> dict:
+    """Re-extract market signals; a local-model outage degrades, not fails."""
+
+    try:
+        return refresh_market_pulse.run()
+    except Exception as exc:  # noqa: BLE001 - signals are best-effort
+        LOGGER.exception("refresh_all: market pulse failed")
+        return {"status": "failed", "error": str(exc)[:4096]}
+
+
+def _start_orchestrator_run(metadata: dict) -> UUID | None:
+    try:
+        with session_scope(_factory()) as db:
+            run = SourceRunRepository(db).start_run(
+                ORCHESTRATOR_SOURCE, metadata=metadata
+            )
+            return run.id
+    except Exception:  # noqa: BLE001 - the sweep is still worth running
+        LOGGER.exception("refresh_all: could not open the parent source run")
+        return None
+
+
+def _finish_orchestrator_run(
+    run_id: UUID | None,
+    summary: dict,
+    *,
+    failed: bool,
+) -> None:
+    if run_id is None:
+        return
+    try:
+        with session_scope(_factory()) as db:
+            runs = SourceRunRepository(db)
+            # finish_run stores the per-source summary and marks the run
+            # partial_success when any source errored; a sweep where nothing
+            # succeeded is downgraded to failed for source-health alerting.
+            runs.finish_run(run_id, summary=summary)
+            if failed:
+                runs.fail_run(run_id, "; ".join(summary["errors"])[:4096])
+    except Exception:  # noqa: BLE001 - never mask per-source outcomes
+        LOGGER.exception("refresh_all: could not close the parent source run")
 
 
 @celery_app.task(name="hope.market.refresh")

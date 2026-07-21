@@ -156,6 +156,7 @@ def run_mvp_pipeline(
     apify_max_items: int | None = None,
     dry_run: bool = False,
     skip_store: bool = False,
+    full_refresh: bool = False,
     verbose: bool = False,
     database_url: str | None = None,
     storage: str = "auto",
@@ -285,6 +286,7 @@ def run_mvp_pipeline(
         "source": source_name,
         "source_since_date": source_since_date,
         "source_limit": source_limit,
+        "full_refresh": full_refresh,
         "company_careers_health": source_load.company_health,
         "apify_linkedin_health": source_load.apify_health,
         "input_path": None if input_path is None else str(input_path),
@@ -672,8 +674,7 @@ def _classify_jobs(
             classified_jobs.append(classify_job_posting(job))
         except (AttributeError, TypeError, ValueError) as exc:
             warning = (
-                f"Classifier failed for job {index}; "
-                f"exporting unclassified job: {exc}"
+                f"Classifier failed for job {index}; exporting unclassified job: {exc}"
             )
             warnings.append(warning)
             LOGGER.warning(warning)
@@ -1012,6 +1013,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Write output artifacts but skip SQLite persistence.",
     )
     parser.add_argument(
+        "--full-refresh",
+        action="store_true",
+        help=(
+            "Treat this run as a complete re-crawl of the source: postings that "
+            "are absent from the run are marked inactive. Only safe when every "
+            "company in the source succeeded."
+        ),
+    )
+    parser.add_argument(
         "--dq-short-description-chars",
         type=int,
         default=None,
@@ -1093,6 +1103,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             apify_max_items=args.apify_max_items,
             dry_run=args.dry_run,
             skip_store=args.skip_store,
+            full_refresh=args.full_refresh,
             verbose=args.verbose,
             database_url=args.database_url,
             storage=args.storage,

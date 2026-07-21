@@ -11,11 +11,14 @@ profiles, with a self-contained static UI at ``/``.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.exc import SQLAlchemyError
 
 from hope_job_agent.classification.career_track import CAREER_TRACKS
 from hope_job_agent.classification.taxonomy import (
@@ -24,6 +27,7 @@ from hope_job_agent.classification.taxonomy import (
     MSIS_TARGET_ROLES,
 )
 from hope_job_agent.config import get_settings
+from hope_job_agent.config.database import resolve_database_url
 from hope_job_agent.scoring.ranker import (
     DEFAULT_RANKING_WEIGHTS,
     RankingWeightsConfigError,
@@ -36,13 +40,30 @@ from hope_job_agent.storage.sqlite_store import (
     resolve_sqlite_database,
 )
 
-from .db import JobRepository
+from .db import (
+    JobRepository,
+    NullPostRepository,
+    PostgresJobRepository,
+    PostgresPostRepository,
+)
+from .posts_service import (
+    PostQuery,
+    apply_post_filters,
+    compute_post_facets,
+    compute_post_stats,
+    post_card,
+    post_detail,
+    sort_posts,
+)
 from .profiles import load_profiles
 from .schemas import (
     HealthResponse,
     JobDetail,
     JobsResponse,
     MatchesResponse,
+    PostDetail,
+    PostsResponse,
+    PostStatsResponse,
     ProfileSummary,
     RankedJob,
     StatsResponse,
@@ -62,6 +83,8 @@ from .service import (
 STATIC_DIR = Path(__file__).parent / "static"
 
 APP_VERSION = "0.1.0"
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _default_db_path() -> Path:
@@ -89,13 +112,53 @@ def _profile_summary(student_id: str, profile) -> ProfileSummary:  # noqa: ANN00
     )
 
 
+def _default_repository() -> JobRepository | PostgresJobRepository:
+    """Read Postgres when DATABASE_URL points at it, else the SQLite store."""
+
+    url = resolve_database_url(None, storage="auto")
+    if url.casefold().startswith("postgres"):
+        try:
+            return PostgresJobRepository(url)
+        except (SQLAlchemyError, ValueError):
+            LOGGER.exception(
+                "Dashboard could not open the Postgres store; "
+                "falling back to the local SQLite store"
+            )
+    return JobRepository(_default_db_path())
+
+
+def _default_post_repository() -> PostgresPostRepository | NullPostRepository:
+    """Read Postgres ``market_posts`` when available, else serve no posts.
+
+    Posts and their LLM signals live only in the platform Postgres DB, so the
+    SQLite demo returns an empty snapshot (graceful empty Posts tab).
+    """
+
+    url = resolve_database_url(None, storage="auto")
+    if url.casefold().startswith("postgres"):
+        try:
+            return PostgresPostRepository(url)
+        except (SQLAlchemyError, ValueError):
+            LOGGER.exception(
+                "Dashboard could not open the Postgres posts store; "
+                "the Posts tab will be empty"
+            )
+    return NullPostRepository()
+
+
 def create_app(
     db_path: Path | None = None,
     profiles_path: Path | None = None,
 ) -> FastAPI:
-    """Build the dashboard app around one SQLite store and profile file."""
+    """Build the dashboard app around one job store and profile file.
 
-    repository = JobRepository(db_path or _default_db_path())
+    An explicit ``db_path`` always selects the SQLite store so the offline demo
+    can be pointed at a fixture database.
+    """
+
+    repository = JobRepository(db_path) if db_path else _default_repository()
+    # An explicit SQLite fixture path has no posts store; serve none.
+    post_repository = NullPostRepository() if db_path else _default_post_repository()
     profiles = load_profiles(profiles_path)
     try:
         ranking_weights = load_ranking_weights()
@@ -156,16 +219,16 @@ def create_app(
     @app.get("/api/jobs", response_model=JobsResponse)
     def list_jobs(
         track: str | None = None,
-        concentration: list[str] | None = Query(default=None),
-        role: list[str] | None = Query(default=None),
-        source: list[str] | None = Query(default=None),
+        concentration: Annotated[list[str] | None, Query()] = None,
+        role: Annotated[list[str] | None, Query()] = None,
+        source: Annotated[list[str] | None, Query()] = None,
         q: str | None = None,
         location: str | None = None,
         remote: bool = False,
         sponsorship: bool = False,
         sort: str | None = None,
-        limit: int = Query(default=60, ge=1, le=500),
-        offset: int = Query(default=0, ge=0),
+        limit: Annotated[int, Query(ge=1, le=500)] = 60,
+        offset: Annotated[int, Query(ge=0)] = 0,
     ) -> JobsResponse:
         snapshot = repository.load()
         query = _query(
@@ -196,6 +259,48 @@ def create_app(
                 return job_detail(key, job)
         raise HTTPException(status_code=404, detail=f"Unknown job: {job_key}")
 
+    @app.get("/api/posts", response_model=PostsResponse)
+    def list_posts(
+        concentration: Annotated[list[str] | None, Query()] = None,
+        company: str | None = None,
+        q: str | None = None,
+        sort: str | None = None,
+        limit: Annotated[int, Query(ge=1, le=500)] = 60,
+        offset: Annotated[int, Query(ge=0)] = 0,
+    ) -> PostsResponse:
+        snapshot = post_repository.load()
+        query = PostQuery(concentrations=concentration or [], company=company, q=q)
+        filtered = apply_post_filters(snapshot.posts, query)
+        # Facets reflect the current search so sidebar counts stay meaningful
+        # while individual concentration filters are toggled.
+        facet_posts = apply_post_filters(snapshot.posts, PostQuery(q=query.q))
+        ordered = sort_posts(filtered, sort)
+        page = ordered[offset : offset + limit]
+        return PostsResponse(
+            total=len(ordered),
+            offset=offset,
+            limit=limit,
+            posts=[post_card(post) for post in page],
+            facets=compute_post_facets(facet_posts),
+        )
+
+    @app.get("/api/posts/stats", response_model=PostStatsResponse)
+    def post_stats() -> PostStatsResponse:
+        snapshot = post_repository.load()
+        return compute_post_stats(
+            snapshot.posts,
+            db_exists=snapshot.db_exists,
+            latest_post_at=snapshot.latest_post_at,
+        )
+
+    @app.get("/api/posts/{post_key}", response_model=PostDetail)
+    def get_post(post_key: str) -> PostDetail:
+        snapshot = post_repository.load()
+        for post in snapshot.posts:
+            if post.post_key == post_key:
+                return post_detail(post)
+        raise HTTPException(status_code=404, detail=f"Unknown post: {post_key}")
+
     @app.get("/api/profiles", response_model=list[ProfileSummary])
     def list_profiles() -> list[ProfileSummary]:
         return [
@@ -207,15 +312,15 @@ def create_app(
     def profile_matches(
         student_id: str,
         track: str | None = None,
-        concentration: list[str] | None = Query(default=None),
-        role: list[str] | None = Query(default=None),
-        source: list[str] | None = Query(default=None),
+        concentration: Annotated[list[str] | None, Query()] = None,
+        role: Annotated[list[str] | None, Query()] = None,
+        source: Annotated[list[str] | None, Query()] = None,
         q: str | None = None,
         location: str | None = None,
         remote: bool = False,
         sponsorship: bool = False,
-        limit: int = Query(default=60, ge=1, le=500),
-        offset: int = Query(default=0, ge=0),
+        limit: Annotated[int, Query(ge=1, le=500)] = 60,
+        offset: Annotated[int, Query(ge=0)] = 0,
     ) -> MatchesResponse:
         profile = profiles.get(student_id)
         if profile is None:

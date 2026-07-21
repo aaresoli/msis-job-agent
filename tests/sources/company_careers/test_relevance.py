@@ -123,6 +123,19 @@ def test_rotational_program_counts_as_early_career():
     assert "rotational" in " ".join(result.matched_keywords)
 
 
+def test_generic_signals_alone_do_not_qualify_as_msis_relevant():
+    # "intern" (+2 early-career) + "cloud" (+1 broad signal) clears the score
+    # threshold, but this is a software engineering role with no MSIS-specific
+    # title or concentration keyword, so it must not be marked relevant.
+    result = score_relevance(
+        "Software Engineer Intern",
+        "Build cloud-native services in a fast-paced team.",
+    )
+
+    assert result.score >= 3
+    assert result.is_relevant is False
+
+
 def test_keywords_override_boosts_score():
     base = score_relevance("Coordinator", "Manage schedules and logistics.")
     boosted = score_relevance(

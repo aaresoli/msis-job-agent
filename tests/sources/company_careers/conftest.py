@@ -8,7 +8,9 @@ substring so query-string variations do not matter.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -18,11 +20,29 @@ from hope_job_agent.sources.company_careers.http import HttpClient, HttpResponse
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
+# Fixtures encode dates as "{DAYS_AGO:N}" (e.g. "{DAYS_AGO:3}") so postings stay
+# within the adapter's rolling freshness window no matter when tests run.
+_DAYS_AGO_PATTERN = re.compile(r"\{DAYS_AGO:(\d+)\}")
+
+
+def _rebase_relative_dates(text: str) -> str:
+    def _replace(match: re.Match[str]) -> str:
+        days_ago = int(match.group(1))
+        target = datetime.now(UTC) - timedelta(days=days_ago)
+        return target.strftime("%Y-%m-%d")
+
+    return _DAYS_AGO_PATTERN.sub(_replace, text)
+
 
 def load_fixture(name: str) -> Any:
-    """Load a JSON fixture from the fixtures directory."""
+    """Load a JSON fixture from the fixtures directory.
 
-    return json.loads((FIXTURES_DIR / name).read_text(encoding="utf-8"))
+    Relative-date placeholders (``"{DAYS_AGO:N}"``) are resolved against the
+    current date before parsing.
+    """
+
+    raw = (FIXTURES_DIR / name).read_text(encoding="utf-8")
+    return json.loads(_rebase_relative_dates(raw))
 
 
 class FakeTransport:

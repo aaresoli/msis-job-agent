@@ -18,6 +18,8 @@ class JobCard(BaseModel):
     location_type: str | None = None
     source: str
     source_badge: str
+    source_slug: str = "other"
+    source_attribution: str = ""
     company_logo: str | None = None
     company_url: str | None = None
     career_track: str
@@ -132,3 +134,64 @@ class HealthResponse(BaseModel):
     db_exists: bool
     job_count: int
     latest_run_at: str | None = None
+
+
+# --- LinkedIn hiring posts -------------------------------------------------
+
+
+class PostSignal(BaseModel):
+    """LLM-extracted hiring signal that cites a post (market-pulse)."""
+
+    topic: str
+    summary: str
+    company_name: str | None = None
+    role_tags: list[str] = Field(default_factory=list)
+    confidence: float | None = None
+
+
+class PostCard(BaseModel):
+    """Compact hiring-post shape rendered as a card in the Posts grid."""
+
+    post_key: str
+    author_name: str | None = None
+    company_name: str | None = None
+    content_excerpt: str
+    source_url: str
+    published_at: str | None = None
+    relevance_score: float | None = None
+    concentration_tags: list[str] = Field(default_factory=list)
+    concentration_codes: list[str] = Field(default_factory=list)
+    matched_keywords: list[str] = Field(default_factory=list)
+    has_signal: bool = False
+    signal_summary: str | None = None
+
+
+class PostDetail(PostCard):
+    """Full hiring-post shape rendered in the detail drawer."""
+
+    content: str
+    career_stage: str | None = None
+    signals: list[PostSignal] = Field(default_factory=list)
+
+
+class PostsFacets(BaseModel):
+    concentrations: list[FacetCount] = Field(default_factory=list)
+    companies: list[FacetCount] = Field(default_factory=list)
+
+
+class PostsResponse(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    posts: list[PostCard]
+    facets: PostsFacets
+
+
+class PostStatsResponse(BaseModel):
+    db_exists: bool
+    total_posts: int
+    company_count: int
+    new_this_week: int
+    with_opportunity: int
+    by_concentration: list[FacetCount] = Field(default_factory=list)
+    latest_post_at: str | None = None

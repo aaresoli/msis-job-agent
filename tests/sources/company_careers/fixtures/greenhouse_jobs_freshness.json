@@ -1,0 +1,23 @@
+{
+  "jobs": [
+    {
+      "id": 3001,
+      "title": "Data Analyst",
+      "updated_at": "{DAYS_AGO:5}T12:00:00-04:00",
+      "location": {"name": "Chicago, IL"},
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/3001",
+      "content": "&lt;p&gt;Build SQL dashboards in Tableau for business teams.&lt;/p&gt;",
+      "departments": [{"name": "Data & Analytics"}]
+    },
+    {
+      "id": 3002,
+      "title": "Data Analyst",
+      "updated_at": "{DAYS_AGO:45}T12:00:00-04:00",
+      "location": {"name": "Chicago, IL"},
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/3002",
+      "content": "&lt;p&gt;Build SQL dashboards in Tableau for business teams.&lt;/p&gt;",
+      "departments": [{"name": "Data & Analytics"}]
+    }
+  ],
+  "meta": {"total": 2}
+}

@@ -11,7 +11,6 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
 from hope_job_agent.classification.career_track import (
-    CAREER_TRACK_FULL_TIME,
     CAREER_TRACK_INTERNSHIP,
     infer_career_track,
 )
@@ -20,6 +19,7 @@ from hope_job_agent.classification.taxonomy import (
     MSIS_CONCENTRATIONS,
 )
 from hope_job_agent.models.job import JobPosting
+from hope_job_agent.utils.us_location import is_us_location
 
 from .schemas import (
     FacetCount,
@@ -34,6 +34,10 @@ Entry = tuple[str, JobPosting]
 
 TRACK_INTERNSHIP = "internship"
 TRACK_FULL_TIME = "full_time"
+
+# Postings older than this never show up in the dashboard. Postings with no
+# parseable posted_date are kept (we can't tell their age).
+MAX_POSTING_AGE_DAYS = 30
 
 _SOURCE_BADGES = {
     "greenhouse": "Greenhouse",
@@ -52,6 +56,17 @@ _SOURCE_NAME_BADGES = {
     "kelleylink_excel": "KelleyLink",
     "approved_json": "Curated",
     "employer_careers": "Employer Careers",
+}
+
+# Providers whose CSS slug differs from the provider key itself.
+_PROVIDER_SLUGS = {"apify": "linkedin"}
+
+_SOURCE_NAME_SLUGS = {
+    "apify_linkedin": "linkedin",
+    "ksbit_export": "kelleylink",
+    "kelleylink_excel": "kelleylink",
+    "approved_json": "curated",
+    "employer_careers": "employer",
 }
 
 
@@ -86,12 +101,44 @@ def effective_track(job: JobPosting) -> str:
 def source_badge(job: JobPosting) -> str:
     """Human-readable source label (LinkedIn, Greenhouse, Workday, ...)."""
 
-    detail = (job.source_detail or "").strip()
-    if detail:
-        provider = detail.split(":", 1)[0].casefold()
-        if provider in _SOURCE_BADGES:
-            return _SOURCE_BADGES[provider]
+    provider = _source_provider(job)
+    if provider and provider in _SOURCE_BADGES:
+        return _SOURCE_BADGES[provider]
     return _SOURCE_NAME_BADGES.get(job.source, job.source)
+
+
+def source_slug(job: JobPosting) -> str:
+    """Stable lowercase identifier for per-source styling (CSS classes)."""
+
+    provider = _source_provider(job)
+    if provider:
+        return _PROVIDER_SLUGS.get(provider, provider)
+    return _SOURCE_NAME_SLUGS.get(job.source, "other")
+
+
+def source_attribution(job: JobPosting) -> str:
+    """Full provenance sentence shown on cards (tooltip) and in the drawer."""
+
+    provider = _source_provider(job)
+    if provider == "apify":
+        return "Fetched from LinkedIn via the Apify job scraper"
+    if provider and provider in _SOURCE_BADGES:
+        return (
+            f"Fetched from {job.company}'s careers site "
+            f"({_SOURCE_BADGES[provider]} ATS)"
+        )
+    if job.source in {"ksbit_export", "kelleylink_excel"}:
+        return "Fetched from a KelleyLink (12Twenty) export"
+    if job.source == "approved_json":
+        return "Curated listing approved by the HOPE team"
+    return f"Fetched from {source_badge(job)}"
+
+
+def _source_provider(job: JobPosting) -> str | None:
+    detail = (job.source_detail or "").strip()
+    if not detail:
+        return None
+    return detail.split(":", 1)[0].casefold()
 
 
 def apply_filters(entries: list[Entry], query: JobQuery) -> list[Entry]:
@@ -103,15 +150,20 @@ def apply_filters(entries: list[Entry], query: JobQuery) -> list[Entry]:
     text_query = (query.q or "").casefold().strip()
     location_query = (query.location or "").casefold().strip()
 
+    max_age_cutoff = (datetime.now(UTC) - timedelta(days=MAX_POSTING_AGE_DAYS)).date()
+
     results: list[Entry] = []
     for job_key, job in entries:
+        if job.posted_date is not None and job.posted_date < max_age_cutoff:
+            continue
+        if not is_us_location(job.location):
+            continue
         if query.track in {TRACK_INTERNSHIP, TRACK_FULL_TIME} and (
             effective_track(job) != query.track
         ):
             continue
         if selected_concentrations and not (
-            selected_concentrations
-            & {tag.casefold() for tag in job.concentration_tags}
+            selected_concentrations & {tag.casefold() for tag in job.concentration_tags}
         ):
             continue
         if selected_roles and not (
@@ -217,9 +269,7 @@ def compute_stats(
         for _job_key, job in entries
         if job.posted_date is not None and job.posted_date >= week_ago
     )
-    sponsorship_count = sum(
-        1 for _job_key, job in entries if job.opt_cpt_flag is True
-    )
+    sponsorship_count = sum(1 for _job_key, job in entries if job.opt_cpt_flag is True)
     company_count = len({job.company.casefold() for _job_key, job in entries})
 
     return StatsResponse(
@@ -249,6 +299,8 @@ def job_card(job_key: str, job: JobPosting) -> JobCard:
         location_type=job.location_type,
         source=job.source,
         source_badge=source_badge(job),
+        source_slug=source_slug(job),
+        source_attribution=source_attribution(job),
         company_logo=_metadata_str(job, "company_logo"),
         company_url=_metadata_str(job, "company_url"),
         career_track=effective_track(job),

@@ -44,6 +44,7 @@ from hope_job_agent.sources.company_careers.relevance import (
     score_relevance,
 )
 from hope_job_agent.sources.company_careers.robots import RobotsPolicy
+from hope_job_agent.utils.us_location import is_us_location
 
 LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class CompanyFetchReport:
     kept: int = 0
     skipped_by_keyword: int = 0
     skipped_by_filter: int = 0
+    skipped_by_freshness: int = 0
     invalid: int = 0
     error: str | None = None
     last_fetch_at: str | None = None
@@ -217,6 +219,7 @@ class CompanyCareersSource(BaseJobSource):
                 report=report,
                 kept_jobs=kept_jobs,
                 max_total=policy.max_total_jobs_per_run,
+                max_posting_age_days=policy.max_posting_age_days,
             )
 
         unique_jobs = deduplicate_jobs(kept_jobs)
@@ -308,12 +311,16 @@ class CompanyCareersSource(BaseJobSource):
         report: CompanyFetchReport,
         kept_jobs: list[JobPosting],
         max_total: int,
+        max_posting_age_days: int,
     ) -> None:
         for raw in raw_jobs:
             if len(kept_jobs) >= max_total:
                 break
             if not self._passes_location_filters(raw, target):
                 report.skipped_by_filter += 1
+                continue
+            if not self._passes_freshness_filter(raw, max_posting_age_days):
+                report.skipped_by_freshness += 1
                 continue
 
             relevance = score_relevance(
@@ -333,8 +340,19 @@ class CompanyCareersSource(BaseJobSource):
             kept_jobs.append(job)
             report.kept += 1
 
+    def _passes_freshness_filter(self, raw: RawJob, max_posting_age_days: int) -> bool:
+        if raw.posted_date is None:
+            return True
+        age_days = (datetime.now(UTC).date() - raw.posted_date).days
+        return age_days <= max_posting_age_days
+
     def _passes_location_filters(self, raw: RawJob, target: CompanyTarget) -> bool:
         location_text = (raw.location or "").casefold()
+        # U.S.-only is the baseline policy. Company-specific filters can make
+        # it narrower, but must never allow an international/unknown location
+        # to bypass that baseline.
+        if not is_us_location(raw.location):
+            return False
         if target.location_filters:
             if not any(
                 token.casefold() in location_text for token in target.location_filters

@@ -147,6 +147,26 @@ SOURCE_REGISTRY: dict[str, SourceMetadata] = {
             "APIFY_TOKEN and is never committed."
         ),
     ),
+    "apify_linkedin_posts": SourceMetadata(
+        name="apify_linkedin_posts",
+        display_name="Apify LinkedIn Posts",
+        status=SourceStatus.APPROVED,
+        source_type="third_party_collection",
+        access_method=(
+            "Apify API v2 with the user-supplied account token. Reads datasets "
+            "of completed actor runs by default; new (paid) actor runs are "
+            "user-invoked only via --apify-trigger-run. Produces hiring-manager "
+            "'market posts' rather than job listings. No direct LinkedIn "
+            "collection happens in this codebase."
+        ),
+        priority=2,
+        notes=(
+            "Approved for the faculty demo using the project owner's Apify "
+            "account and LinkedIn posts scraper actor. Reuses APIFY_TOKEN; the "
+            "posts actor id lives in .env as APIFY_POSTS_ACTOR_ID. Posts are "
+            "gated with the same deterministic MSIS relevance filter as jobs."
+        ),
+    ),
 }
 
 

@@ -173,6 +173,73 @@ def test_internal_mutations_require_correlation_and_idempotency_headers() -> Non
     assert accepted.json()["status"] == "disabled"
 
 
+class _StubSession:
+    """Minimal Session stand-in for the idempotency lookup in execute_source."""
+
+    def __init__(self) -> None:
+        self.added: list[Any] = []
+
+    def get(self, model, key):  # noqa: ANN001, ANN202
+        del model
+        return next((row for row in self.added if row.key == key), None)
+
+    def add(self, row) -> None:  # noqa: ANN001
+        self.added.append(row)
+
+
+def test_execute_source_dispatches_refresh_and_dedupes_by_idempotency_key(
+    monkeypatch,
+) -> None:
+    from hope_job_agent.api.dependencies import get_db
+    from hope_job_agent.workers import tasks
+
+    dispatched: list[tuple] = []
+
+    class _Result:
+        id = "task-abc"
+
+    def fake_delay(source_name, **kwargs):  # noqa: ANN001, ANN202
+        dispatched.append((source_name, kwargs))
+        return _Result()
+
+    monkeypatch.setattr(tasks.refresh_source, "delay", fake_delay)
+    session = _StubSession()
+    app.dependency_overrides[get_db] = lambda: session
+    try:
+        client = TestClient(app)
+        headers = {
+            "Authorization": "Bearer development-only-change-me",
+            "Idempotency-Key": "test-careers-1",
+            "X-Request-ID": "test-request-2",
+        }
+        first = client.post(
+            "/internal/v1/sources/company_careers/execute",
+            json={"limit": 25},
+            headers=headers,
+        )
+        assert first.status_code == 200
+        assert first.json() == {
+            "source": "company_careers",
+            "status": "accepted",
+            "task_id": "task-abc",
+        }
+        assert dispatched == [
+            ("company_careers", {"limit": 25, "dry_run": False}),
+        ]
+
+        # Replaying the same key returns the stored response without a second run.
+        second = client.post(
+            "/internal/v1/sources/company_careers/execute",
+            json={"limit": 25},
+            headers=headers,
+        )
+        assert second.status_code == 200
+        assert second.json() == first.json()
+        assert len(dispatched) == 1
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+
 def test_rate_limit_falls_back_locally_when_redis_is_unavailable(monkeypatch) -> None:
     def unavailable(*args, **kwargs):
         del args, kwargs

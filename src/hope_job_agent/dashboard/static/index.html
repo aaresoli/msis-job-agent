@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Kelley MSIS Career Intelligence</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%23990000'/%3E%3Ctext x='50' y='68' font-size='52' font-family='Georgia' text-anchor='middle' fill='white'%3EH%3C/text%3E%3C/svg%3E" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=3" />
 </head>
 <body>
   <header class="topbar">
@@ -17,13 +17,22 @@
       </div>
     </div>
 
-    <div class="track-toggle" role="tablist" aria-label="Career track">
-      <button id="track-internship" class="track-btn" role="tab" aria-selected="false">
-        Internships <span class="track-count" id="count-internship">&ndash;</span>
-      </button>
-      <button id="track-full_time" class="track-btn" role="tab" aria-selected="true">
-        Full-time <span class="track-count" id="count-full_time">&ndash;</span>
-      </button>
+    <div class="topbar-center">
+      <div class="view-toggle" role="tablist" aria-label="Content view">
+        <button id="view-jobs" class="view-btn" role="tab" aria-selected="true">Jobs</button>
+        <button id="view-posts" class="view-btn" role="tab" aria-selected="false">
+          Posts <span class="view-count" id="count-posts">&ndash;</span>
+        </button>
+      </div>
+
+      <div class="track-toggle" role="tablist" aria-label="Career track">
+        <button id="track-internship" class="track-btn" role="tab" aria-selected="false">
+          Internships <span class="track-count" id="count-internship">&ndash;</span>
+        </button>
+        <button id="track-full_time" class="track-btn" role="tab" aria-selected="true">
+          Full-time <span class="track-count" id="count-full_time">&ndash;</span>
+        </button>
+      </div>
     </div>
 
     <div class="topbar-right">
@@ -37,15 +46,15 @@
 
   <section class="statsbar" id="statsbar" hidden>
     <div class="stat-tiles">
-      <div class="stat-tile"><span class="stat-value" id="stat-total">&ndash;</span><span class="stat-label">Open roles</span></div>
+      <div class="stat-tile"><span class="stat-value" id="stat-total">&ndash;</span><span class="stat-label" id="stat-total-label">Open roles</span></div>
       <div class="stat-tile"><span class="stat-value" id="stat-companies">&ndash;</span><span class="stat-label">Companies</span></div>
       <div class="stat-tile"><span class="stat-value" id="stat-new">&ndash;</span><span class="stat-label">New this week</span></div>
-      <div class="stat-tile"><span class="stat-value" id="stat-sponsor">&ndash;</span><span class="stat-label">OPT/CPT friendly</span></div>
+      <div class="stat-tile"><span class="stat-value" id="stat-sponsor">&ndash;</span><span class="stat-label" id="stat-sponsor-label">OPT/CPT friendly</span></div>
     </div>
     <div class="conc-block">
       <div class="conc-header">
         <span class="conc-title">MSIS concentration coverage</span>
-        <span class="conc-note">all five tracks represented</span>
+        <span class="conc-note" id="conc-note">&ndash;</span>
       </div>
       <div class="conc-bar" id="conc-bar" aria-hidden="true"></div>
       <div class="conc-legend" id="conc-legend"></div>
@@ -53,6 +62,7 @@
     <div class="source-block">
       <span class="conc-title">Sources</span>
       <div class="source-chips" id="source-chips"></div>
+      <span class="source-note" id="source-note"></span>
     </div>
   </section>
 
@@ -74,31 +84,39 @@
         <h3 class="filter-title">Concentration</h3>
         <div class="check-list" id="concentration-filters"></div>
 
-        <h3 class="filter-title">Source</h3>
-        <div class="check-list" id="source-filters"></div>
+        <div id="jobs-filters">
+          <h3 class="filter-title">Source</h3>
+          <div class="check-list" id="source-filters"></div>
 
-        <h3 class="filter-title">Target role</h3>
-        <select id="role-filter" class="select">
-          <option value="">All target roles</option>
-        </select>
+          <h3 class="filter-title">Target role</h3>
+          <select id="role-filter" class="select">
+            <option value="">All target roles</option>
+          </select>
 
-        <h3 class="filter-title">Location</h3>
-        <input type="text" id="location-input" class="text-input" placeholder="City, state&hellip;" autocomplete="off" />
+          <h3 class="filter-title">Location</h3>
+          <input type="text" id="location-input" class="text-input" placeholder="City, state&hellip;" autocomplete="off" />
 
-        <label class="switch-row">
-          <input type="checkbox" id="remote-toggle" />
-          <span>Remote-friendly only</span>
-        </label>
-        <label class="switch-row">
-          <input type="checkbox" id="sponsorship-toggle" />
-          <span>OPT/CPT-friendly only</span>
-        </label>
+          <label class="switch-row">
+            <input type="checkbox" id="remote-toggle" />
+            <span>Remote-friendly only</span>
+          </label>
+          <label class="switch-row">
+            <input type="checkbox" id="sponsorship-toggle" />
+            <span>OPT/CPT-friendly only</span>
+          </label>
+        </div>
+
+        <div id="posts-filters" hidden>
+          <h3 class="filter-title">Company</h3>
+          <input type="text" id="company-input" class="text-input" placeholder="Company name&hellip;" autocomplete="off" />
+          <div id="company-filters"></div>
+        </div>
 
         <h3 class="filter-title">Sort by</h3>
         <select id="sort-select" class="select">
           <option value="recent">Newest first</option>
           <option value="relevance">MSIS relevance</option>
-          <option value="company">Company A&ndash;Z</option>
+          <option value="company" class="jobs-only-option">Company A&ndash;Z</option>
         </select>
 
         <button id="reset-filters" class="ghost-btn">Reset all filters</button>
@@ -132,6 +150,6 @@
     <span class="footer-right">Sources: LinkedIn (Apify) &middot; public employer ATS APIs &middot; Kelley HOPE project</span>
   </footer>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=3"></script>
 </body>
 </html>

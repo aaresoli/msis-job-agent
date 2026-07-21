@@ -323,11 +323,11 @@ def detect_career_stage(title: str, description: str = "") -> str:
     """
 
     title_text = _norm(title)
-    combined = f"{title_text} {_norm(description)}"
 
-    if _matches(title_text, ["intern", "internship", "co-op", "coop"]) or _contains(
-        combined, "internship"
-    ):
+    # Title-only: a description merely mentioning "internship" (e.g. a
+    # full-time posting referencing the company's intern program) must not
+    # reclassify the whole posting.
+    if _matches(title_text, ["intern", "internship", "co-op", "coop"]):
         return "internship"
     if _matches(
         title_text,
@@ -441,7 +441,14 @@ def score_relevance(
         reasons.append(f"unrelated domain (-4): {', '.join(unrelated_hits)}")
 
     career_stage = detect_career_stage(title, description)
-    is_relevant = score >= threshold
+    # Generic signals (early-career language, tool mentions, broad terms like
+    # "cloud"/"analytics") are common in plenty of non-MSIS roles (e.g. a
+    # "Software Engineer Intern" mentioning "cloud" already hits threshold on
+    # early-career + broad-signal alone). Require an actual MSIS-specific
+    # signal -- a strong title match or an official concentration keyword --
+    # before treating the score as relevant.
+    has_msis_signal = bool(strong_title or concentration_hints)
+    is_relevant = score >= threshold and has_msis_signal
 
     return RelevanceResult(
         score=score,

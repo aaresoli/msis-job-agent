@@ -53,6 +53,9 @@ class FetchPolicy(BaseModel):
     backoff_seconds: float = Field(default=0.5, ge=0.0)
     max_jobs_per_company: int = Field(default=200, ge=1)
     max_total_jobs_per_run: int = Field(default=2000, ge=1)
+    # Postings older than this are dropped during ingestion; postings with no
+    # parseable posted date are kept (we can't tell their age).
+    max_posting_age_days: int = Field(default=30, ge=1)
     respect_robots: bool = True
     # Some ATS list endpoints omit the full description; fetching detail pages
     # improves relevance scoring but increases request volume.

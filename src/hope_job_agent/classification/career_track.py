@@ -77,16 +77,20 @@ def infer_career_track(job: JobPosting) -> str:
 
     if _matches_any(title, _INTERNSHIP_TITLE_KEYWORDS):
         return CAREER_TRACK_INTERNSHIP
-    if employment_type in _INTERNSHIP_EMPLOYMENT_TYPES:
+    # A senior-stage title vetoes the employment-type internship label, which
+    # sources sometimes misapply (e.g. "Staff Engineer" tagged Internship).
+    if employment_type in _INTERNSHIP_EMPLOYMENT_TYPES and career_stage != "senior":
         return CAREER_TRACK_INTERNSHIP
     if seniority == "internship":
         return CAREER_TRACK_INTERNSHIP
+    # Explicit full-time title markers ("New Grad", "Entry Level") outrank the
+    # career-stage heuristic, which is derived from fuzzier description text.
+    if _matches_any(title, _FULL_TIME_TITLE_KEYWORDS):
+        return CAREER_TRACK_FULL_TIME
     if career_stage == "internship":
         return CAREER_TRACK_INTERNSHIP
 
     if employment_type.startswith("full"):
-        return CAREER_TRACK_FULL_TIME
-    if _matches_any(title, _FULL_TIME_TITLE_KEYWORDS):
         return CAREER_TRACK_FULL_TIME
 
     return CAREER_TRACK_UNKNOWN

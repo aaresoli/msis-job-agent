@@ -69,18 +69,32 @@ def normalize_apify_job(item: dict[str, Any], actor_run_id: str) -> JobPosting:
 
 def normalize_apify_post(item: dict[str, Any], actor_run_id: str) -> dict[str, Any]:
     content = str(item.get("text") or item.get("content") or "")
-    source_url = str(item.get("url") or item.get("postUrl") or "")
+    source_url = str(
+        item.get("url") or item.get("postUrl") or item.get("linkedinUrl") or ""
+    )
+    author = item.get("author")
+    author_name = (
+        author.get("name")
+        if isinstance(author, dict)
+        else item.get("authorName") or author
+    )
+    posted_at = item.get("postedAt")
+    published_at = (
+        posted_at.get("date")
+        if isinstance(posted_at, dict)
+        else item.get("publishedAt") or item.get("date") or posted_at
+    )
     external_id = str(
         item.get("id") or source_url or hashlib.sha256(content.encode()).hexdigest()
     )
     return {
         "source": "apify_linkedin_posts",
         "external_id": external_id,
-        "author_name": item.get("authorName") or item.get("author"),
+        "author_name": item.get("authorName") or author_name,
         "company_name": item.get("companyName"),
         "content": content,
         "source_url": source_url,
-        "published_at": item.get("publishedAt") or item.get("date"),
+        "published_at": item.get("publishedAt") or item.get("date") or published_at,
         "content_hash": hashlib.sha256(content.encode()).hexdigest(),
         "raw_metadata": {"actor_run_id": actor_run_id, "payload": item},
     }

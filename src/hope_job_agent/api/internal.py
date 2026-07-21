@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -34,11 +35,19 @@ from hope_job_agent.db.platform_models import (
 from hope_job_agent.persistence.job_repository import JobPostingRepository
 from hope_job_agent.platform.settings import PlatformSettings, get_platform_settings
 from hope_job_agent.sources.apify import normalize_apify_job, normalize_apify_post
+from hope_job_agent.sources.apify_linkedin import ApifyLinkedInSettings
+from hope_job_agent.sources.registry import (
+    SourceComplianceError,
+    ensure_source_allowed,
+)
 from hope_job_agent.workers.tasks import (
+    REFRESHABLE_SOURCES,
     enforce_retention,
     enrich_job,
     generate_profile_matches,
+    refresh_all,
     refresh_market_pulse,
+    refresh_source,
 )
 
 router = APIRouter(prefix="/internal/v1", tags=["internal"])
@@ -61,21 +70,98 @@ def invite_user(
     return {"id": str(user.id), "email": user.email, "status": user.status}
 
 
+@router.post("/sources/refresh-all", dependencies=[Depends(require_internal_service)])
+def execute_refresh_all(
+    payload: SourceRunRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Queue one sweep over every scheduled source (jobs, then posts, then signals).
+
+    This is the endpoint schedulers should call; ``/sources/{name}/execute``
+    stays available for refreshing a single source by hand.
+    """
+
+    # Schedulers retry on timeout; dedupe so one window cannot start two sweeps.
+    key = f"source-refresh-all:{request.state.idempotency_key}"
+    existing = db.get(IdempotencyRecord, key)
+    if existing is not None:
+        return existing.response_payload or {"status": "duplicate"}
+
+    task = refresh_all.delay(limit=payload.limit, dry_run=payload.dry_run)
+    response = {"status": "accepted", "task_id": task.id}
+    db.add(
+        IdempotencyRecord(
+            key=key,
+            scope="sources.refresh_all",
+            request_hash=hashlib.sha256(
+                json.dumps(payload.model_dump(mode="json"), sort_keys=True).encode()
+            ).hexdigest(),
+            response_code=200,
+            response_payload=response,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+    )
+    return response
+
+
 @router.post(
     "/sources/{source_name}/execute", dependencies=[Depends(require_internal_service)]
 )
-def execute_source(source_name: str, payload: SourceRunRequest) -> dict:
-    if source_name in {"ksbit_denodo", "apify_linkedin"}:
+def execute_source(
+    source_name: str,
+    payload: SourceRunRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict:
+    if source_name not in REFRESHABLE_SOURCES:
         return {
             "source": source_name,
             "status": "disabled",
-            "reason": "Endpoint mapping and source approval are required",
+            "reason": (
+                "Endpoint mapping and source approval are required before this "
+                "source can be refreshed on a schedule"
+            ),
         }
-    return {
-        "source": source_name,
-        "status": "accepted",
-        "request": payload.model_dump(mode="json"),
-    }
+    try:
+        ensure_source_allowed(source_name)
+    except SourceComplianceError as exc:
+        return {"source": source_name, "status": "disabled", "reason": str(exc)}
+    if (
+        source_name == "apify_linkedin"
+        and not ApifyLinkedInSettings().apify_token.get_secret_value().strip()
+    ):
+        return {
+            "source": source_name,
+            "status": "disabled",
+            "reason": "APIFY_TOKEN is not configured",
+        }
+
+    # Schedulers retry on timeout; dedupe so one window cannot start two crawls.
+    key = f"source-execute:{source_name}:{request.state.idempotency_key}"
+    existing = db.get(IdempotencyRecord, key)
+    if existing is not None:
+        return existing.response_payload or {"status": "duplicate"}
+
+    task = refresh_source.delay(
+        source_name,
+        limit=payload.limit,
+        dry_run=payload.dry_run,
+    )
+    response = {"source": source_name, "status": "accepted", "task_id": task.id}
+    db.add(
+        IdempotencyRecord(
+            key=key,
+            scope="sources.execute",
+            request_hash=hashlib.sha256(
+                json.dumps(payload.model_dump(mode="json"), sort_keys=True).encode()
+            ).hexdigest(),
+            response_code=200,
+            response_payload=response,
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+        )
+    )
+    return response
 
 
 @router.post("/batches/enrich", dependencies=[Depends(require_internal_service)])
@@ -190,7 +276,7 @@ def source_health_alerts(db: Session = Depends(get_db)) -> dict:
     failures = db.scalars(
         select(SourceRun).where(
             SourceRun.started_at >= cutoff,
-            SourceRun.run_status.in_(["failed", "partial"]),
+            SourceRun.run_status.in_(["failed", "partial", "partial_success"]),
         )
     ).all()
     return {

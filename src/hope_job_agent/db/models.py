@@ -181,6 +181,9 @@ class JobPostingRecord(Base):
         DateTime(timezone=True), nullable=False, default=_utcnow, onupdate=_utcnow
     )
     raw_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    # Full normalized JobPosting payload; the flattened columns above drop
+    # fields the dashboard needs (career_track, role_tags, ...).
+    job_json: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     canonical_url: Mapped[str | None] = mapped_column(String(2048))
     canonical_fingerprint: Mapped[str | None] = mapped_column(String(128))
     content_hash: Mapped[str | None] = mapped_column(String(128))

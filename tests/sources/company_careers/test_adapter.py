@@ -79,6 +79,70 @@ def test_non_msis_jobs_are_filtered_out(transport):
     assert "Senior Director, Field Operations" not in titles
 
 
+def test_non_us_location_is_filtered_by_default(transport):
+    transport.route(
+        method="GET",
+        contains="boards-api.greenhouse.io/v1/boards/acme/jobs",
+        body=load_fixture("greenhouse_jobs_intl.json"),
+    )
+    source = CompanyCareersSource(
+        config=_config([_greenhouse_company()]),
+        client=make_client(transport),
+    )
+
+    result = source.fetch_all_jobs()
+
+    assert result.kept_count == 1
+    assert result.jobs[0].location == "Chicago, IL"
+    assert result.reports[0].skipped_by_filter == 1
+
+
+def test_unknown_remote_location_is_filtered_by_default(transport):
+    payload = {
+        "jobs": [
+            {
+                "id": 9001,
+                "title": "Data Analyst",
+                "location": {"name": "Remote"},
+                "absolute_url": "https://example.com/jobs/9001",
+                "content": "Build SQL dashboards and analytics.",
+            }
+        ]
+    }
+    transport.route(
+        method="GET",
+        contains="boards-api.greenhouse.io/v1/boards/acme/jobs",
+        body=payload,
+    )
+    source = CompanyCareersSource(
+        config=_config([_greenhouse_company()]),
+        client=make_client(transport),
+    )
+
+    result = source.fetch_all_jobs()
+
+    assert result.jobs == []
+    assert result.reports[0].skipped_by_filter == 1
+
+
+def test_postings_older_than_a_month_are_filtered_by_default(transport):
+    transport.route(
+        method="GET",
+        contains="boards-api.greenhouse.io/v1/boards/acme/jobs",
+        body=load_fixture("greenhouse_jobs_freshness.json"),
+    )
+    source = CompanyCareersSource(
+        config=_config([_greenhouse_company()]),
+        client=make_client(transport),
+    )
+
+    result = source.fetch_all_jobs()
+
+    assert result.kept_count == 1
+    assert result.jobs[0].source_job_id.endswith(":3001")
+    assert result.reports[0].skipped_by_freshness == 1
+
+
 def test_failed_company_is_reported_not_raised(transport):
     # No route for this board -> transport returns 404 -> provider error.
     source = CompanyCareersSource(

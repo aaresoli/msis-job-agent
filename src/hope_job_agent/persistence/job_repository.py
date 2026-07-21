@@ -304,6 +304,7 @@ def _job_to_record_fields(
         "last_seen_at": now,
         "fetched_at": fetched_at,
         "raw_metadata": job.raw_metadata or None,
+        "job_json": job.model_dump(mode="json", exclude={"created_at", "updated_at"}),
         "canonical_url": canonical,
         "canonical_fingerprint": compute_canonical_fingerprint(job),
         "content_hash": compute_content_hash(job),

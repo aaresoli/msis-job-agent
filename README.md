@@ -8,10 +8,14 @@ privacy controls, GCS aggregate analytics, automation, and a mobile-first web ap
 
 ## Current Status
 
-The platform is ready for local deployment and external endpoint mapping. Live
-Denodo, Apify LinkedIn, and Ollama calls remain disabled until their credentials,
-payload fixtures, and approvals are supplied. The existing SQLite CLI remains
-available for offline demos; the web platform uses PostgreSQL and pgvector.
+The platform is ready for local deployment and external endpoint mapping. Local
+Ollama inference is wired end to end and enabled by pointing `OLLAMA_BASE_URL`
+and `OLLAMA_CHAT_MODEL` at a running server — see
+[the DGX Spark runbook](docs/dgx_spark_deployment.md) for the model choices and
+why they are MoE. Live Denodo and Apify LinkedIn calls remain disabled until
+their credentials, payload fixtures, and approvals are supplied. The existing
+SQLite CLI remains available for offline demos; the web platform uses
+PostgreSQL and pgvector.
 
 The current code provides:
 
@@ -69,16 +73,17 @@ LinkedIn, Handshake, employer systems, and any third-party job source must be ac
 
 ## Setup
 
-Use Python 3.11 or newer.
+Requires Python 3.14 and [uv](https://docs.astral.sh/uv/). Dependencies are
+resolved from the committed `uv.lock`, so every environment installs the same
+set.
 
 ```bash
-python -m venv .venv
-# macOS/Linux:
-source .venv/bin/activate
-# Windows PowerShell:
-# .\.venv\Scripts\Activate.ps1
-python -m pip install -e ".[dev]"
+uv sync
 ```
+
+That creates `.venv` and installs the project with its development tools. Run
+commands through `uv run` (for example `uv run pytest`) so they use it without
+a manual activation step.
 
 Create a local environment file only if needed:
 

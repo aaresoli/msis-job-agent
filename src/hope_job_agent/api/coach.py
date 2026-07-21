@@ -12,8 +12,8 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from hope_job_agent.ai.graphs import stream_coach_reply
-from hope_job_agent.ai.provider import get_model_provider
+from hope_job_agent.ai.graphs import CoachStreamStatus, stream_coach_reply
+from hope_job_agent.ai.provider import WORKLOAD_INTERACTIVE, get_model_provider
 from hope_job_agent.api.dependencies import current_user, get_db, require_csrf
 from hope_job_agent.api.schemas import CoachMessageCreate
 from hope_job_agent.db.models import StudentProfileRecord
@@ -92,11 +92,19 @@ def stream_message(
 
     def events() -> Iterator[str]:
         chunks: list[str] = []
+        stream_status = CoachStreamStatus()
         for chunk in stream_coach_reply(
-            get_model_provider(), payload.content, {"profile": profile_context}
+            get_model_provider(WORKLOAD_INTERACTIVE),
+            payload.content,
+            {"profile": profile_context},
+            status=stream_status,
         ):
             chunks.append(chunk)
             yield f"event: token\ndata: {json.dumps({'text': chunk})}\n\n"
+        # A stream cut short by an outage is stored with its inline notice
+        # attached, never as a clean turn: thread history is what the student
+        # rereads later, and a silently truncated answer there is indistinguish-
+        # able from advice the coach actually finished giving.
         db.add(
             CoachMessage(thread_id=thread_id, role="assistant", content="".join(chunks))
         )
@@ -104,7 +112,11 @@ def stream_message(
             db,
             actor_user_id=user.id,
             subject_user_id=user.id,
-            action="coach.responded",
+            action=(
+                "coach.responded.truncated"
+                if stream_status.truncated
+                else "coach.responded"
+            ),
             resource_type="coach_thread",
             resource_id=str(thread_id),
         )
@@ -112,7 +124,11 @@ def stream_message(
         # the response body is fully consumed. Commit here so the turn is
         # durable even if the client disconnects mid-stream.
         db.commit()
-        yield "event: done\ndata: {}\n\n"
+        yield (
+            "event: done\ndata: "
+            + json.dumps({"truncated": stream_status.truncated})
+            + "\n\n"
+        )
 
     return StreamingResponse(
         events(),

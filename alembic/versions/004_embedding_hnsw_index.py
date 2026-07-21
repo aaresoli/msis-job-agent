@@ -29,15 +29,29 @@ INDEX_NAME = "ix_job_embeddings_embedding_hnsw"
 
 
 def upgrade() -> None:
+    # CONCURRENTLY, in an autocommit block: a plain CREATE INDEX holds a SHARE
+    # lock for the whole build, which blocks every INSERT and UPDATE on
+    # job_embeddings. An HNSW build over a populated table is slow, so on a
+    # deployed instance that is an ingestion outage for the duration. Postgres
+    # rejects CONCURRENTLY inside a transaction, and Alembic wraps migrations
+    # in one, hence the explicit autocommit block.
+    #
+    # IF NOT EXISTS because a failed CONCURRENTLY build leaves an invalid index
+    # behind rather than rolling back; see the runbook note in downgrade().
+    #
     # m / ef_construction are pgvector's defaults, stated explicitly so a
     # future tuning change is a visible diff rather than a silent default shift.
-    op.execute(f"""
-        CREATE INDEX {INDEX_NAME}
-        ON job_embeddings
-        USING hnsw (embedding vector_cosine_ops)
-        WITH (m = 16, ef_construction = 64)
-        """)
+    with op.get_context().autocommit_block():
+        op.execute(f"""
+            CREATE INDEX CONCURRENTLY IF NOT EXISTS {INDEX_NAME}
+            ON job_embeddings
+            USING hnsw (embedding vector_cosine_ops)
+            WITH (m = 16, ef_construction = 64)
+            """)
 
 
 def downgrade() -> None:
-    op.execute(f"DROP INDEX IF EXISTS {INDEX_NAME}")
+    # Also CONCURRENTLY, for the same reason. This doubles as the recovery step
+    # if an interrupted upgrade left an invalid index: drop it, then re-run.
+    with op.get_context().autocommit_block():
+        op.execute(f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME}")

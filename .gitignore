@@ -44,3 +44,11 @@ data/*
 outputs/
 logs/
 *.log
+
+# Machine-local Claude Code settings (paths and permissions are per-developer).
+.claude/settings.local.json
+
+# Host-local compose overrides. Deployments publish ports and add dev-only
+# services (a local SMTP catcher, for example) here so the committed compose
+# file keeps publishing nothing by default.
+docker-compose.override.yml

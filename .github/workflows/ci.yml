@@ -26,6 +26,9 @@ jobs:
           --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://hope_user:hope_password@localhost:5432/hope_jobs
+      # Pinned explicitly so the migration and the runtime cannot disagree even
+      # if one of the two defaults is changed in isolation.
+      EMBEDDING_DIMENSION: "768"
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -79,8 +82,10 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      # Not continue-on-error: an advisory that only prints is an advisory
+      # nobody acts on. Transitive findings whose parent has no fixed release
+      # yet are pinned via the "overrides" block in web/package.json.
       - run: npm audit --audit-level=high
-        continue-on-error: true
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test

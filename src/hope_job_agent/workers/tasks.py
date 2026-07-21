@@ -31,6 +31,7 @@ from hope_job_agent.ai.graphs import (
 )
 from hope_job_agent.ai.provider import ModelUnavailable, get_model_provider
 from hope_job_agent.ai.ranking import normalize_rule_score
+from hope_job_agent.config.database import embedding_dimension
 from hope_job_agent.db.models import (
     JobMatchRecord,
     JobPostingRecord,
@@ -62,6 +63,7 @@ from hope_job_agent.platform.documents import (
     delete_private_document,
     get_private_document,
 )
+from hope_job_agent.platform.settings import get_platform_settings
 from hope_job_agent.scoring.ranker import rank_jobs_for_student
 from hope_job_agent.sources.apify_linkedin_posts import (
     SOURCE_NAME as POSTS_SOURCE_NAME,
@@ -99,13 +101,47 @@ def _factory() -> sessionmaker[Session]:
 
 @worker_process_init.connect
 def _reset_factory_after_fork(**_kwargs: object) -> None:
-    """Drop any inherited engine so forked children never share a pool.
+    """Drop any inherited engine or model client so forked children never share.
 
     Sockets survive ``fork``; two processes writing to one connection corrupts
-    the protocol. Clearing the cache makes each child build its own.
+    the protocol. Clearing the caches makes each child build its own. The model
+    provider is cached for the same reason the session factory is — it holds a
+    pooled HTTP client — so it has the same fork hazard and the same fix.
     """
 
     _factory.cache_clear()
+    get_model_provider.cache_clear()
+
+
+# embeddinggemma is trained with task prefixes and does not apply them itself.
+# Documents and queries take different ones; using a single prefix for both
+# costs retrieval quality silently, which is the same class of failure as the
+# dimension mismatch below.
+EMBED_DOCUMENT_PREFIX = "title: none | text: "
+EMBED_QUERY_PREFIX = "task: search result | query: "
+
+
+def _usable_vector(vector: list[float], label: str) -> bool:
+    """Return whether ``vector`` matches the configured pgvector width.
+
+    A mismatch means the configured embedding model does not agree with
+    ``EMBEDDING_DIMENSION``, and the column cannot store the result. That used
+    to be swallowed by a bare length check, producing a system with no
+    embeddings and no error anywhere. It is a misconfiguration, so it is
+    logged.
+    """
+
+    expected = embedding_dimension()
+    if len(vector) == expected:
+        return True
+    LOGGER.warning(
+        "%s embedding has %d dimensions but EMBEDDING_DIMENSION is %d; "
+        "check OLLAMA_EMBEDDING_MODEL. Vector discarded.",
+        label,
+        len(vector),
+        expected,
+    )
+    return False
 
 
 @celery_app.task(
@@ -152,15 +188,15 @@ def enrich_job(job_id: str) -> dict[str, Any]:
         row.payload = payload
         try:
             embedding_input = f"{job.title}\n{job.description or ''}"
-            vector = provider.embed([embedding_input])[0]
-            if len(vector) == 768:
+            vector = provider.embed([EMBED_DOCUMENT_PREFIX + embedding_input])[0]
+            if _usable_vector(vector, "job"):
                 EmbeddingRepository(db).upsert_embedding(
                     job.id,
                     vector,
-                    "embeddinggemma",
+                    get_platform_settings().ollama_embedding_model,
                     hashlib.sha256(embedding_input.encode()).hexdigest(),
                 )
-        except (ModelUnavailable, IndexError):
+        except ModelUnavailable, IndexError:
             pass
         if existing is None:
             db.add(row)
@@ -635,15 +671,15 @@ def generate_profile_matches(profile_id: str) -> dict[str, Any]:
                     " ".join(student.geo_preference),
                 ]
             )
-            vector = provider.embed([profile_text])[0]
-            if len(vector) == 768:
+            vector = provider.embed([EMBED_QUERY_PREFIX + profile_text])[0]
+            if _usable_vector(vector, "student profile"):
                 vector_by_id = {
                     job.id: similarity
                     for job, similarity in EmbeddingRepository(db).similarity_search(
                         vector, filters={"status": "active"}, limit=100
                     )
                 }
-        except (ModelUnavailable, IndexError):
+        except ModelUnavailable, IndexError:
             pass
 
         candidate_ids = deterministic_ids | set(vector_by_id)

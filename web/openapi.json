@@ -249,6 +249,35 @@
         "title": "ConsentCreate",
         "type": "object"
       },
+      "FacetCount": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "count"
+        ],
+        "title": "FacetCount",
+        "type": "object"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -260,6 +289,471 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "JobCard": {
+        "description": "Compact posting shape rendered as a card in the jobs grid.",
+        "properties": {
+          "apply_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apply Url"
+          },
+          "career_track": {
+            "title": "Career Track",
+            "type": "string"
+          },
+          "company": {
+            "title": "Company",
+            "type": "string"
+          },
+          "company_logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Logo"
+          },
+          "company_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Url"
+          },
+          "compensation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compensation"
+          },
+          "concentration_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Codes",
+            "type": "array"
+          },
+          "concentration_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Tags",
+            "type": "array"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "employment_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employment Type"
+          },
+          "job_key": {
+            "title": "Job Key",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "location_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Type"
+          },
+          "opt_cpt_flag": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opt Cpt Flag"
+          },
+          "posted_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted Date"
+          },
+          "relevance_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Score"
+          },
+          "role_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Tags",
+            "type": "array"
+          },
+          "seniority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seniority"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_attribution": {
+            "default": "",
+            "title": "Source Attribution",
+            "type": "string"
+          },
+          "source_badge": {
+            "title": "Source Badge",
+            "type": "string"
+          },
+          "source_slug": {
+            "default": "other",
+            "title": "Source Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "job_key",
+          "title",
+          "company",
+          "location",
+          "source",
+          "source_badge",
+          "career_track",
+          "url"
+        ],
+        "title": "JobCard",
+        "type": "object"
+      },
+      "JobDetail": {
+        "description": "Full posting shape rendered in the detail drawer.",
+        "properties": {
+          "applications_count": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applications Count"
+          },
+          "apply_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apply Url"
+          },
+          "career_track": {
+            "title": "Career Track",
+            "type": "string"
+          },
+          "classification_uncertain": {
+            "default": false,
+            "title": "Classification Uncertain",
+            "type": "boolean"
+          },
+          "company": {
+            "title": "Company",
+            "type": "string"
+          },
+          "company_logo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Logo"
+          },
+          "company_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Url"
+          },
+          "compensation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compensation"
+          },
+          "concentration_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Codes",
+            "type": "array"
+          },
+          "concentration_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Tags",
+            "type": "array"
+          },
+          "department": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Department"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "employment_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Employment Type"
+          },
+          "job_key": {
+            "title": "Job Key",
+            "type": "string"
+          },
+          "location": {
+            "title": "Location",
+            "type": "string"
+          },
+          "location_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Location Type"
+          },
+          "matched_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Keywords",
+            "type": "array"
+          },
+          "opt_cpt_flag": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opt Cpt Flag"
+          },
+          "posted_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Posted Date"
+          },
+          "relevance_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Score"
+          },
+          "retrieved_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieved At"
+          },
+          "role_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Tags",
+            "type": "array"
+          },
+          "sector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sector"
+          },
+          "seniority": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seniority"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_attribution": {
+            "default": "",
+            "title": "Source Attribution",
+            "type": "string"
+          },
+          "source_badge": {
+            "title": "Source Badge",
+            "type": "string"
+          },
+          "source_slug": {
+            "default": "other",
+            "title": "Source Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          },
+          "work_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Work Type"
+          }
+        },
+        "required": [
+          "job_key",
+          "title",
+          "company",
+          "location",
+          "source",
+          "source_badge",
+          "career_track",
+          "url",
+          "description"
+        ],
+        "title": "JobDetail",
         "type": "object"
       },
       "JobFeedbackCreate": {
@@ -291,6 +785,114 @@
           "action"
         ],
         "title": "JobFeedbackCreate",
+        "type": "object"
+      },
+      "JobsFacets": {
+        "properties": {
+          "concentrations": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Concentrations",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "tracks": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Tracks",
+            "type": "object"
+          }
+        },
+        "title": "JobsFacets",
+        "type": "object"
+      },
+      "JobsResponse": {
+        "properties": {
+          "facets": {
+            "$ref": "#/components/schemas/JobsFacets"
+          },
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobCard"
+            },
+            "title": "Jobs",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "offset",
+          "limit",
+          "jobs",
+          "facets"
+        ],
+        "title": "JobsResponse",
+        "type": "object"
+      },
+      "LatestRun": {
+        "properties": {
+          "completed_at": {
+            "title": "Completed At",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "runtime_seconds": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runtime Seconds"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "unique_count": {
+            "title": "Unique Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "run_id",
+          "source",
+          "completed_at",
+          "unique_count"
+        ],
+        "title": "LatestRun",
         "type": "object"
       },
       "MagicLinkConsume": {
@@ -334,6 +936,393 @@
           "message"
         ],
         "title": "MessageResponse",
+        "type": "object"
+      },
+      "PostCard": {
+        "description": "Compact hiring-post shape rendered as a card in the Posts grid.",
+        "properties": {
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "concentration_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Codes",
+            "type": "array"
+          },
+          "concentration_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Tags",
+            "type": "array"
+          },
+          "content_excerpt": {
+            "title": "Content Excerpt",
+            "type": "string"
+          },
+          "has_signal": {
+            "default": false,
+            "title": "Has Signal",
+            "type": "boolean"
+          },
+          "matched_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Keywords",
+            "type": "array"
+          },
+          "post_key": {
+            "title": "Post Key",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "relevance_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Score"
+          },
+          "signal_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Summary"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_key",
+          "content_excerpt",
+          "source_url"
+        ],
+        "title": "PostCard",
+        "type": "object"
+      },
+      "PostDetail": {
+        "description": "Full hiring-post shape rendered in the detail drawer.",
+        "properties": {
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "career_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Career Stage"
+          },
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "concentration_codes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Codes",
+            "type": "array"
+          },
+          "concentration_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Concentration Tags",
+            "type": "array"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "content_excerpt": {
+            "title": "Content Excerpt",
+            "type": "string"
+          },
+          "has_signal": {
+            "default": false,
+            "title": "Has Signal",
+            "type": "boolean"
+          },
+          "matched_keywords": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Keywords",
+            "type": "array"
+          },
+          "post_key": {
+            "title": "Post Key",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "relevance_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevance Score"
+          },
+          "signal_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Signal Summary"
+          },
+          "signals": {
+            "items": {
+              "$ref": "#/components/schemas/PostSignal"
+            },
+            "title": "Signals",
+            "type": "array"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "post_key",
+          "content_excerpt",
+          "source_url",
+          "content"
+        ],
+        "title": "PostDetail",
+        "type": "object"
+      },
+      "PostSignal": {
+        "description": "LLM-extracted hiring signal that cites a post (market-pulse).",
+        "properties": {
+          "company_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Name"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "role_tags": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Tags",
+            "type": "array"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "topic",
+          "summary"
+        ],
+        "title": "PostSignal",
+        "type": "object"
+      },
+      "PostStatsResponse": {
+        "properties": {
+          "by_concentration": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "By Concentration",
+            "type": "array"
+          },
+          "company_count": {
+            "title": "Company Count",
+            "type": "integer"
+          },
+          "db_exists": {
+            "title": "Db Exists",
+            "type": "boolean"
+          },
+          "latest_post_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Post At"
+          },
+          "new_this_week": {
+            "title": "New This Week",
+            "type": "integer"
+          },
+          "total_posts": {
+            "title": "Total Posts",
+            "type": "integer"
+          },
+          "with_opportunity": {
+            "title": "With Opportunity",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "db_exists",
+          "total_posts",
+          "company_count",
+          "new_this_week",
+          "with_opportunity"
+        ],
+        "title": "PostStatsResponse",
+        "type": "object"
+      },
+      "PostsFacets": {
+        "properties": {
+          "companies": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Companies",
+            "type": "array"
+          },
+          "concentrations": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "Concentrations",
+            "type": "array"
+          }
+        },
+        "title": "PostsFacets",
+        "type": "object"
+      },
+      "PostsResponse": {
+        "properties": {
+          "facets": {
+            "$ref": "#/components/schemas/PostsFacets"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "posts": {
+            "items": {
+              "$ref": "#/components/schemas/PostCard"
+            },
+            "title": "Posts",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total",
+          "offset",
+          "limit",
+          "posts",
+          "facets"
+        ],
+        "title": "PostsResponse",
         "type": "object"
       },
       "ProfileUpdate": {
@@ -575,6 +1564,125 @@
           }
         },
         "title": "SourceRunRequest",
+        "type": "object"
+      },
+      "StatsResponse": {
+        "properties": {
+          "by_concentration": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "By Concentration",
+            "type": "array"
+          },
+          "by_source": {
+            "items": {
+              "$ref": "#/components/schemas/FacetCount"
+            },
+            "title": "By Source",
+            "type": "array"
+          },
+          "company_count": {
+            "title": "Company Count",
+            "type": "integer"
+          },
+          "db_exists": {
+            "title": "Db Exists",
+            "type": "boolean"
+          },
+          "full_time_count": {
+            "title": "Full Time Count",
+            "type": "integer"
+          },
+          "internship_count": {
+            "title": "Internship Count",
+            "type": "integer"
+          },
+          "latest_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "new_this_week": {
+            "title": "New This Week",
+            "type": "integer"
+          },
+          "sponsorship_count": {
+            "title": "Sponsorship Count",
+            "type": "integer"
+          },
+          "total_jobs": {
+            "title": "Total Jobs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "db_exists",
+          "total_jobs",
+          "internship_count",
+          "full_time_count",
+          "sponsorship_count",
+          "new_this_week",
+          "company_count",
+          "by_source",
+          "by_concentration"
+        ],
+        "title": "StatsResponse",
+        "type": "object"
+      },
+      "TaxonomyEntry": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "code"
+        ],
+        "title": "TaxonomyEntry",
+        "type": "object"
+      },
+      "TaxonomyResponse": {
+        "properties": {
+          "concentrations": {
+            "items": {
+              "$ref": "#/components/schemas/TaxonomyEntry"
+            },
+            "title": "Concentrations",
+            "type": "array"
+          },
+          "roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "tracks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tracks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "concentrations",
+          "roles",
+          "tracks"
+        ],
+        "title": "TaxonomyResponse",
         "type": "object"
       },
       "ValidationError": {
@@ -1436,6 +2544,622 @@
         "summary": "Stream Message",
         "tags": [
           "career-coach"
+        ]
+      }
+    },
+    "/api/v1/discovery/jobs": {
+      "get": {
+        "operationId": "list_jobs_api_v1_discovery_jobs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "track",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Track"
+            }
+          },
+          {
+            "in": "query",
+            "name": "concentration",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Concentration"
+            }
+          },
+          {
+            "in": "query",
+            "name": "role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "location",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Location"
+            }
+          },
+          {
+            "in": "query",
+            "name": "remote",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Remote",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sponsorship",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Sponsorship",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "hope_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hope Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/v1/discovery/jobs/{job_key}": {
+      "get": {
+        "operationId": "get_job_api_v1_discovery_jobs__job_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_key",
+            "required": true,
+            "schema": {
+              "title": "Job Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "hope_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hope Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/v1/discovery/posts": {
+      "get": {
+        "operationId": "list_posts_api_v1_discovery_posts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "concentration",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Concentration"
+            }
+          },
+          {
+            "in": "query",
+            "name": "company",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Company"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 60,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "hope_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hope Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Posts",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/v1/discovery/posts/stats": {
+      "get": {
+        "operationId": "post_stats_api_v1_discovery_posts_stats_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "hope_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hope Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostStatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Post Stats",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/v1/discovery/posts/{post_key}": {
+      "get": {
+        "operationId": "get_post_api_v1_discovery_posts__post_key__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_key",
+            "required": true,
+            "schema": {
+              "title": "Post Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "hope_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hope Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Post",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/v1/discovery/stats": {
+      "get": {
+        "operationId": "stats_api_v1_discovery_stats_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "hope_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hope Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stats",
+        "tags": [
+          "discovery"
+        ]
+      }
+    },
+    "/api/v1/discovery/taxonomy": {
+      "get": {
+        "description": "Concentrations, roles, and tracks, so clients stop hard-coding them.",
+        "operationId": "taxonomy_api_v1_discovery_taxonomy_get",
+        "parameters": [
+          {
+            "in": "cookie",
+            "name": "hope_session",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hope Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaxonomyResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Taxonomy",
+        "tags": [
+          "discovery"
         ]
       }
     },
@@ -3777,6 +5501,100 @@
           }
         },
         "summary": "Enqueue Retention",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/sources/refresh-all": {
+      "post": {
+        "description": "Queue one sweep over every scheduled source (jobs, then posts, then signals).\n\nThis is the endpoint schedulers should call; ``/sources/{name}/execute``\nstays available for refreshing a single source by hand.",
+        "operationId": "execute_refresh_all_internal_v1_sources_refresh_all_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Execute Refresh All Internal V1 Sources Refresh All Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Execute Refresh All",
         "tags": [
           "internal"
         ]

@@ -68,9 +68,19 @@ def _allow_request_locally(key: str, limit: int, window_seconds: int) -> bool:
 
     now = time.monotonic()
     with _lock:
-        if len(_fallback) >= _FALLBACK_MAX_ENTRIES:
+        if len(_fallback) >= _FALLBACK_MAX_ENTRIES and key not in _fallback:
             for expired in [k for k, (_, exp) in _fallback.items() if now >= exp]:
                 del _fallback[expired]
+            # Evicting only expired entries leaves the cap unenforced exactly
+            # when it matters: a burst of distinct identities inside one window
+            # has nothing to expire, and the dict grows past the ceiling. Drop
+            # the entries closest to expiry to make room.
+            overflow = len(_fallback) - _FALLBACK_MAX_ENTRIES + 1
+            if overflow > 0:
+                for stale, _ in sorted(_fallback.items(), key=lambda item: item[1][1])[
+                    :overflow
+                ]:
+                    del _fallback[stale]
         count, expires = _fallback.get(key, (0, now + window_seconds))
         if now >= expires:
             count, expires = 0, now + window_seconds

@@ -10,20 +10,21 @@ validation error back into the next attempt as a correction message, bounded by
 ``MAX_GENERATION_ATTEMPTS``. Exhausting the attempts routes the item to
 ``review`` rather than persisting unvalidated model output.
 
-``RetryPolicy`` covers a different failure: a transient provider outage, where
-re-prompting is pointless but retrying the call is not.
+``_chat_with_retry`` covers a different failure: a transient provider outage,
+where re-prompting is pointless but retrying the call is not.
 """
 
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Iterator
+from dataclasses import dataclass
 from typing import Any, TypedDict
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
-from langgraph.types import RetryPolicy
 from pydantic import BaseModel, ValidationError
 
 from hope_job_agent.ai.provider import ModelProvider, ModelUnavailable
@@ -41,7 +42,8 @@ MAX_GENERATION_ATTEMPTS = 2
 
 # Retries the provider call itself on a transient outage. Distinct from the
 # re-prompt cycle, which handles a healthy connection returning bad content.
-PROVIDER_RETRY = RetryPolicy(retry_on=(ModelUnavailable,), max_attempts=3)
+PROVIDER_MAX_ATTEMPTS = 3
+PROVIDER_RETRY_BACKOFF_SECONDS = 0.25
 
 STATUS_READY = "ready"
 STATUS_REVIEW = "review"
@@ -102,6 +104,30 @@ def _correction_message(raw_output: str, error: str) -> dict[str, str]:
     }
 
 
+def _chat_with_retry(
+    provider: ModelProvider, messages: list[dict[str, str]], *, schema: dict[str, Any]
+) -> str:
+    """Call the provider, retrying a transient outage before giving up.
+
+    LangGraph's ``RetryPolicy`` cannot do this job here. It only retries
+    exceptions that *escape* a node, and these graphs must catch
+    ``ModelUnavailable`` in-node to degrade toward ``review`` rather than raise
+    out of ``invoke``. A node that both catches and declares a retry policy
+    silently gets one attempt, so the retry lives at the call site instead.
+    """
+
+    last_error: ModelUnavailable | None = None
+    for attempt in range(1, PROVIDER_MAX_ATTEMPTS + 1):
+        try:
+            return provider.chat(messages, schema=schema)
+        except ModelUnavailable as exc:
+            last_error = exc
+            if attempt < PROVIDER_MAX_ATTEMPTS:
+                time.sleep(PROVIDER_RETRY_BACKOFF_SECONDS * attempt)
+    assert last_error is not None  # every path above either returned or set it
+    raise last_error
+
+
 def _parse(raw: str, model: type[BaseModel]) -> Any:
     """Parse ``raw`` into ``model``; JSON errors surface as ``ValueError``."""
 
@@ -110,6 +136,37 @@ def _parse(raw: str, model: type[BaseModel]) -> Any:
     except json.JSONDecodeError as exc:
         raise ValueError(f"reply was not valid JSON: {exc}") from exc
     return model.model_validate(data)
+
+
+def _normalize_for_quote_match(text: str) -> str:
+    """Collapse whitespace and case so only the wording has to match."""
+
+    return " ".join(text.split()).casefold()
+
+
+def _unsupported_quotes(
+    payload: JobEnrichmentPayload, description: str, title: str
+) -> list[str]:
+    """Return every evidence quote absent from the posting text.
+
+    The schema can only require that a quote is non-empty; it never sees the
+    posting. Without this check "verbatim" is a request in the system prompt
+    rather than a guarantee, and a fabricated sponsorship quote validates
+    cleanly. Sponsorship, salary, and location are exactly the claims the
+    project promises are traceable, so an unsupported quote fails the payload.
+    """
+
+    haystack = _normalize_for_quote_match(f"{title}\n{description}")
+    return [
+        item.quote
+        for group in (
+            payload.work_auth_evidence,
+            payload.salary_evidence,
+            payload.location_evidence,
+        )
+        for item in group
+        if _normalize_for_quote_match(item.quote) not in haystack
+    ]
 
 
 def _exhausted(state: JobEnrichmentState | MarketPulseState) -> bool:
@@ -139,9 +196,9 @@ def build_job_enrichment_graph(
         if state.get("error") and state.get("raw_output"):
             messages.append(_correction_message(state["raw_output"], state["error"]))
         try:
-            content = provider.chat(messages, schema=schema)
+            content = _chat_with_retry(provider, messages, schema=schema)
         except ModelUnavailable as exc:
-            # Surfaced after RetryPolicy has exhausted its attempts.
+            # Surfaced only after PROVIDER_MAX_ATTEMPTS calls have all failed.
             return {
                 **state,
                 "status": STATUS_REVIEW,
@@ -162,6 +219,18 @@ def build_job_enrichment_graph(
             payload = _parse(state.get("raw_output", ""), JobEnrichmentPayload)
         except (ValidationError, ValueError) as exc:
             return {**state, "status": STATUS_REVIEW, "error": str(exc)}
+        unsupported = _unsupported_quotes(
+            payload, state.get("description", ""), state.get("title", "")
+        )
+        if unsupported:
+            return {
+                **state,
+                "status": STATUS_REVIEW,
+                "error": (
+                    "evidence quote not found in the posting: "
+                    + "; ".join(repr(quote) for quote in unsupported[:3])
+                ),
+            }
         return {
             **state,
             "enrichment": payload.model_dump(mode="json"),
@@ -175,7 +244,7 @@ def build_job_enrichment_graph(
         return "retry"
 
     graph = StateGraph(JobEnrichmentState)
-    graph.add_node("extract_evidence", generate, retry_policy=PROVIDER_RETRY)
+    graph.add_node("extract_evidence", generate)
     graph.add_node("validate_evidence", validate)
     graph.add_edge(START, "extract_evidence")
     graph.add_edge("extract_evidence", "validate_evidence")
@@ -245,6 +314,11 @@ COACH_UNAVAILABLE = (
     "application tracker are still available."
 )
 
+COACH_TRUNCATED_NOTICE = (
+    "\n\n[This answer stopped early because local coaching became "
+    "unavailable mid-reply. Ask again for a complete response.]"
+)
+
 
 def coach_messages(question: str, context: dict[str, Any]) -> list[dict[str, str]]:
     """Build the coach prompt shared by the graph and the streaming route."""
@@ -256,13 +330,32 @@ def coach_messages(question: str, context: dict[str, Any]) -> list[dict[str, str
     ]
 
 
+@dataclass
+class CoachStreamStatus:
+    """Whether a coach stream finished cleanly.
+
+    ``stream_coach_reply`` cannot signal a mid-stream failure through its return
+    value, because by then it has already yielded tokens the caller forwarded to
+    the browser. Callers that persist the turn pass one of these in and check it
+    before treating the accumulated text as a complete answer.
+    """
+
+    truncated: bool = False
+
+
 def stream_coach_reply(
-    provider: ModelProvider, question: str, context: dict[str, Any]
+    provider: ModelProvider,
+    question: str,
+    context: dict[str, Any],
+    status: CoachStreamStatus | None = None,
 ) -> Iterator[str]:
     """Yield coach tokens as the model produces them.
 
-    Emits the unavailable notice if the provider is down or drops mid-reply, so
-    the caller sees the same copy regardless of when the outage lands.
+    Emits the unavailable notice if the provider is down before producing
+    anything. An outage that lands *after* some tokens have shipped is a
+    different case: the student is already looking at a partial answer, so
+    deleting it is as confusing as keeping it. The remainder is marked inline
+    and flagged on ``status`` so the caller does not store it as a whole turn.
     """
 
     produced = False
@@ -273,6 +366,10 @@ def stream_coach_reply(
     except ModelUnavailable:
         if not produced:
             yield COACH_UNAVAILABLE
+            return
+        if status is not None:
+            status.truncated = True
+        yield COACH_TRUNCATED_NOTICE
         return
     if not produced:
         yield COACH_UNAVAILABLE
@@ -328,7 +425,7 @@ def build_market_pulse_graph(
         if state.get("error") and state.get("raw_output"):
             messages.append(_correction_message(state["raw_output"], state["error"]))
         try:
-            content = provider.chat(messages, schema=schema)
+            content = _chat_with_retry(provider, messages, schema=schema)
         except ModelUnavailable as exc:
             return {
                 **state,
@@ -379,7 +476,7 @@ def build_market_pulse_graph(
 
     graph = StateGraph(MarketPulseState)
     graph.add_node("check_provenance", guard)
-    graph.add_node("extract_cited_signals", generate, retry_policy=PROVIDER_RETRY)
+    graph.add_node("extract_cited_signals", generate)
     graph.add_node("validate_citations", validate)
     graph.add_edge(START, "check_provenance")
     graph.add_conditional_edges(

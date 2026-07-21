@@ -161,6 +161,128 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/discovery/jobs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Jobs */
+        get: operations["list_jobs_api_v1_discovery_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/jobs/{job_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Job */
+        get: operations["get_job_api_v1_discovery_jobs__job_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/posts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Posts */
+        get: operations["list_posts_api_v1_discovery_posts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/posts/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Post Stats */
+        get: operations["post_stats_api_v1_discovery_posts_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/posts/{post_key}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Post */
+        get: operations["get_post_api_v1_discovery_posts__post_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Stats */
+        get: operations["stats_api_v1_discovery_stats_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/discovery/taxonomy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Taxonomy
+         * @description Concentrations, roles, and tracks, so clients stop hard-coding them.
+         */
+        get: operations["taxonomy_api_v1_discovery_taxonomy_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/gcs/analytics": {
         parameters: {
             query?: never;
@@ -674,6 +796,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/v1/sources/refresh-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Refresh All
+         * @description Queue one sweep over every scheduled source (jobs, then posts, then signals).
+         *
+         *     This is the endpoint schedulers should call; ``/sources/{name}/execute``
+         *     stays available for refreshing a single source by hand.
+         */
+        post: operations["execute_refresh_all_internal_v1_sources_refresh_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/internal/v1/sources/{source_name}/execute": {
         parameters: {
             query?: never;
@@ -802,10 +947,156 @@ export interface components {
             /** Policy Version */
             policy_version: string;
         };
+        /** FacetCount */
+        FacetCount: {
+            /** Code */
+            code?: string | null;
+            /** Count */
+            count: number;
+            /** Name */
+            name: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * JobCard
+         * @description Compact posting shape rendered as a card in the jobs grid.
+         */
+        JobCard: {
+            /** Apply Url */
+            apply_url?: string | null;
+            /** Career Track */
+            career_track: string;
+            /** Company */
+            company: string;
+            /** Company Logo */
+            company_logo?: string | null;
+            /** Company Url */
+            company_url?: string | null;
+            /** Compensation */
+            compensation?: string | null;
+            /** Concentration Codes */
+            concentration_codes?: string[];
+            /** Concentration Tags */
+            concentration_tags?: string[];
+            /** Department */
+            department?: string | null;
+            /** Employment Type */
+            employment_type?: string | null;
+            /** Job Key */
+            job_key: string;
+            /** Location */
+            location: string;
+            /** Location Type */
+            location_type?: string | null;
+            /** Opt Cpt Flag */
+            opt_cpt_flag?: boolean | null;
+            /** Posted Date */
+            posted_date?: string | null;
+            /** Relevance Score */
+            relevance_score?: number | null;
+            /** Role Tags */
+            role_tags?: string[];
+            /** Seniority */
+            seniority?: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Source Attribution
+             * @default
+             */
+            source_attribution: string;
+            /** Source Badge */
+            source_badge: string;
+            /**
+             * Source Slug
+             * @default other
+             */
+            source_slug: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+        };
+        /**
+         * JobDetail
+         * @description Full posting shape rendered in the detail drawer.
+         */
+        JobDetail: {
+            /** Applications Count */
+            applications_count?: string | null;
+            /** Apply Url */
+            apply_url?: string | null;
+            /** Career Track */
+            career_track: string;
+            /**
+             * Classification Uncertain
+             * @default false
+             */
+            classification_uncertain: boolean;
+            /** Company */
+            company: string;
+            /** Company Logo */
+            company_logo?: string | null;
+            /** Company Url */
+            company_url?: string | null;
+            /** Compensation */
+            compensation?: string | null;
+            /** Concentration Codes */
+            concentration_codes?: string[];
+            /** Concentration Tags */
+            concentration_tags?: string[];
+            /** Department */
+            department?: string | null;
+            /** Description */
+            description: string;
+            /** Employment Type */
+            employment_type?: string | null;
+            /** Job Key */
+            job_key: string;
+            /** Location */
+            location: string;
+            /** Location Type */
+            location_type?: string | null;
+            /** Matched Keywords */
+            matched_keywords?: string[];
+            /** Opt Cpt Flag */
+            opt_cpt_flag?: boolean | null;
+            /** Posted Date */
+            posted_date?: string | null;
+            /** Relevance Score */
+            relevance_score?: number | null;
+            /** Retrieved At */
+            retrieved_at?: string | null;
+            /** Role Tags */
+            role_tags?: string[];
+            /** Sector */
+            sector?: string | null;
+            /** Seniority */
+            seniority?: string | null;
+            /** Source */
+            source: string;
+            /**
+             * Source Attribution
+             * @default
+             */
+            source_attribution: string;
+            /** Source Badge */
+            source_badge: string;
+            /**
+             * Source Slug
+             * @default other
+             */
+            source_slug: string;
+            /** Title */
+            title: string;
+            /** Url */
+            url: string;
+            /** Work Type */
+            work_type?: string | null;
         };
         /** JobFeedbackCreate */
         JobFeedbackCreate: {
@@ -816,6 +1107,44 @@ export interface components {
             action: "saved" | "dismissed" | "applied" | "opened";
             /** Reason */
             reason?: string | null;
+        };
+        /** JobsFacets */
+        JobsFacets: {
+            /** Concentrations */
+            concentrations?: components["schemas"]["FacetCount"][];
+            /** Roles */
+            roles?: components["schemas"]["FacetCount"][];
+            /** Sources */
+            sources?: components["schemas"]["FacetCount"][];
+            /** Tracks */
+            tracks?: {
+                [key: string]: number;
+            };
+        };
+        /** JobsResponse */
+        JobsResponse: {
+            facets: components["schemas"]["JobsFacets"];
+            /** Jobs */
+            jobs: components["schemas"]["JobCard"][];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Total */
+            total: number;
+        };
+        /** LatestRun */
+        LatestRun: {
+            /** Completed At */
+            completed_at: string;
+            /** Run Id */
+            run_id: string;
+            /** Runtime Seconds */
+            runtime_seconds?: number | null;
+            /** Source */
+            source: string;
+            /** Unique Count */
+            unique_count: number;
         };
         /** MagicLinkConsume */
         MagicLinkConsume: {
@@ -831,6 +1160,130 @@ export interface components {
         MessageResponse: {
             /** Message */
             message: string;
+        };
+        /**
+         * PostCard
+         * @description Compact hiring-post shape rendered as a card in the Posts grid.
+         */
+        PostCard: {
+            /** Author Name */
+            author_name?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Concentration Codes */
+            concentration_codes?: string[];
+            /** Concentration Tags */
+            concentration_tags?: string[];
+            /** Content Excerpt */
+            content_excerpt: string;
+            /**
+             * Has Signal
+             * @default false
+             */
+            has_signal: boolean;
+            /** Matched Keywords */
+            matched_keywords?: string[];
+            /** Post Key */
+            post_key: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Relevance Score */
+            relevance_score?: number | null;
+            /** Signal Summary */
+            signal_summary?: string | null;
+            /** Source Url */
+            source_url: string;
+        };
+        /**
+         * PostDetail
+         * @description Full hiring-post shape rendered in the detail drawer.
+         */
+        PostDetail: {
+            /** Author Name */
+            author_name?: string | null;
+            /** Career Stage */
+            career_stage?: string | null;
+            /** Company Name */
+            company_name?: string | null;
+            /** Concentration Codes */
+            concentration_codes?: string[];
+            /** Concentration Tags */
+            concentration_tags?: string[];
+            /** Content */
+            content: string;
+            /** Content Excerpt */
+            content_excerpt: string;
+            /**
+             * Has Signal
+             * @default false
+             */
+            has_signal: boolean;
+            /** Matched Keywords */
+            matched_keywords?: string[];
+            /** Post Key */
+            post_key: string;
+            /** Published At */
+            published_at?: string | null;
+            /** Relevance Score */
+            relevance_score?: number | null;
+            /** Signal Summary */
+            signal_summary?: string | null;
+            /** Signals */
+            signals?: components["schemas"]["PostSignal"][];
+            /** Source Url */
+            source_url: string;
+        };
+        /**
+         * PostSignal
+         * @description LLM-extracted hiring signal that cites a post (market-pulse).
+         */
+        PostSignal: {
+            /** Company Name */
+            company_name?: string | null;
+            /** Confidence */
+            confidence?: number | null;
+            /** Role Tags */
+            role_tags?: string[];
+            /** Summary */
+            summary: string;
+            /** Topic */
+            topic: string;
+        };
+        /** PostStatsResponse */
+        PostStatsResponse: {
+            /** By Concentration */
+            by_concentration?: components["schemas"]["FacetCount"][];
+            /** Company Count */
+            company_count: number;
+            /** Db Exists */
+            db_exists: boolean;
+            /** Latest Post At */
+            latest_post_at?: string | null;
+            /** New This Week */
+            new_this_week: number;
+            /** Total Posts */
+            total_posts: number;
+            /** With Opportunity */
+            with_opportunity: number;
+        };
+        /** PostsFacets */
+        PostsFacets: {
+            /** Companies */
+            companies?: components["schemas"]["FacetCount"][];
+            /** Concentrations */
+            concentrations?: components["schemas"]["FacetCount"][];
+        };
+        /** PostsResponse */
+        PostsResponse: {
+            facets: components["schemas"]["PostsFacets"];
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Posts */
+            posts: components["schemas"]["PostCard"][];
+            /** Total */
+            total: number;
         };
         /** ProfileUpdate */
         ProfileUpdate: {
@@ -906,6 +1359,44 @@ export interface components {
             limit?: number | null;
             /** Since */
             since?: string | null;
+        };
+        /** StatsResponse */
+        StatsResponse: {
+            /** By Concentration */
+            by_concentration: components["schemas"]["FacetCount"][];
+            /** By Source */
+            by_source: components["schemas"]["FacetCount"][];
+            /** Company Count */
+            company_count: number;
+            /** Db Exists */
+            db_exists: boolean;
+            /** Full Time Count */
+            full_time_count: number;
+            /** Internship Count */
+            internship_count: number;
+            latest_run?: components["schemas"]["LatestRun"] | null;
+            /** New This Week */
+            new_this_week: number;
+            /** Sponsorship Count */
+            sponsorship_count: number;
+            /** Total Jobs */
+            total_jobs: number;
+        };
+        /** TaxonomyEntry */
+        TaxonomyEntry: {
+            /** Code */
+            code: string;
+            /** Name */
+            name: string;
+        };
+        /** TaxonomyResponse */
+        TaxonomyResponse: {
+            /** Concentrations */
+            concentrations: components["schemas"]["TaxonomyEntry"][];
+            /** Roles */
+            roles: string[];
+            /** Tracks */
+            tracks: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -1369,6 +1860,246 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_jobs_api_v1_discovery_jobs_get: {
+        parameters: {
+            query?: {
+                track?: string | null;
+                concentration?: string[] | null;
+                role?: string[] | null;
+                source?: string[] | null;
+                q?: string | null;
+                location?: string | null;
+                remote?: boolean;
+                sponsorship?: boolean;
+                sort?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                hope_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_job_api_v1_discovery_jobs__job_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_key: string;
+            };
+            cookie?: {
+                hope_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_posts_api_v1_discovery_posts_get: {
+        parameters: {
+            query?: {
+                concentration?: string[] | null;
+                company?: string | null;
+                q?: string | null;
+                sort?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                hope_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_stats_api_v1_discovery_posts_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                hope_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostStatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_post_api_v1_discovery_posts__post_key__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                post_key: string;
+            };
+            cookie?: {
+                hope_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stats_api_v1_discovery_stats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                hope_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    taxonomy_api_v1_discovery_taxonomy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                hope_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaxonomyResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2507,6 +3238,45 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_refresh_all_internal_v1_sources_refresh_all_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-Request-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceRunRequest"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

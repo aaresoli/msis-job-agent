@@ -27,7 +27,21 @@ class PlatformSettings(BaseSettings):
     langgraph_checkpoint_ttl_days: int = 90
     ollama_base_url: str = ""
     ollama_chat_model: str = ""
+    # Serves the streaming coach, where a student is watching tokens arrive. An
+    # empty value falls back to ollama_chat_model, so a single-model deployment
+    # needs no extra configuration.
+    ollama_interactive_model: str = ""
     ollama_embedding_model: str = "embeddinggemma"
+    # Ollama silently truncates a prompt that exceeds the context window rather
+    # than erroring. Market Pulse and resume parsing both send ~30k characters,
+    # so the window is set explicitly instead of inherited from the model
+    # default. 0 keeps the model default.
+    ollama_num_ctx: int = 32768
+    # A 120B-class model on a long enrichment prompt does not answer in 60s.
+    ollama_timeout_seconds: float = 300.0
+    # Sent per request so residency does not depend on how the server was
+    # launched. Mirrors the OLLAMA_KEEP_ALIVE compose default.
+    ollama_keep_alive: str = "2h"
     redis_url: str = "redis://localhost:6379/0"
     minio_endpoint: str = "localhost:9000"
     minio_access_key: SecretStr = SecretStr("hope_minio")

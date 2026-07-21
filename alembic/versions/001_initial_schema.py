@@ -14,7 +14,10 @@ down_revision = None
 branch_labels = None
 depends_on = None
 
-EMBED_DIM = int(os.getenv("EMBEDDING_DIMENSION", "1536"))
+# Must match the runtime default in hope_job_agent.config.database. A migration
+# default of 1536 against a runtime default of 768 builds columns no query can
+# use, and only fails once a vector is written.
+EMBED_DIM = int(os.getenv("EMBEDDING_DIMENSION", "768"))
 
 
 def upgrade() -> None:

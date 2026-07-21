@@ -94,6 +94,7 @@ def create_app() -> FastAPI:
                 "available": model.available,
                 "provider": model.provider,
                 "model": model.model,
+                "embedding_model": model.embedding_model,
                 "detail": model.detail,
             },
             "degraded": not model.available,

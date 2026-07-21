@@ -1,3 +1,16 @@
+import type { components } from "@/lib/generated/api";
+
+// Discovery shapes are taken straight from the generated OpenAPI types rather
+// than re-declared, so a backend field change fails `npm run typecheck`
+// instead of silently rendering undefined.
+export type DiscoveryJobCard = components["schemas"]["JobCard"];
+export type DiscoveryJobsResponse = components["schemas"]["JobsResponse"];
+export type DiscoveryFacetCount = components["schemas"]["FacetCount"];
+export type DiscoveryTaxonomy = components["schemas"]["TaxonomyResponse"];
+export type DiscoveryPostCard = components["schemas"]["PostCard"];
+export type DiscoveryPostsResponse = components["schemas"]["PostsResponse"];
+export type DiscoveryPostStats = components["schemas"]["PostStatsResponse"];
+
 export type Job = {
   id: string;
   title: string;

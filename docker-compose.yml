@@ -9,7 +9,11 @@ x-app-environment: &app-environment
   MINIO_BUCKET: hope-private-documents
   OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
   OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-}
+  OLLAMA_INTERACTIVE_MODEL: ${OLLAMA_INTERACTIVE_MODEL:-}
   OLLAMA_EMBEDDING_MODEL: embeddinggemma
+  OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-32768}
+  OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-300}
+  OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-2h}
   EMBEDDING_DIMENSION: 768
   EMBEDDING_MODEL: embeddinggemma
   APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
@@ -114,15 +118,21 @@ services:
 
   postgres:
     # Upgraded from pg16. A Postgres major version cannot reuse an older data
-    # directory, so an existing hope_pgdata volume must be dumped and restored:
+    # directory, and pg18 also relocated PGDATA (see the volume note below), so
+    # an existing hope_pgdata volume must be dumped and restored:
     #
     #   docker compose exec postgres pg_dumpall -U hope_user > backup.sql
     #   docker compose down
     #   docker volume rm hope-career-intelligence_hope_pgdata
     #   docker compose --profile platform up -d postgres
-    #   docker compose exec -T postgres psql -U hope_user < backup.sql
+    #   docker compose exec -T postgres psql -U hope_user -d postgres < backup.sql
     #   docker compose run --rm migrate
     #   docker compose run --rm langgraph-init
+    #
+    # -d postgres is required: psql otherwise defaults to a database named
+    # after the user, and no hope_user database exists. pg_dumpall rather than
+    # pg_dump because the cluster also holds the langgraph, n8n, and phoenix
+    # databases and their roles.
     #
     # Starting pg18 against a pg16 volume fails loudly rather than corrupting
     # it, so a skipped dump costs downtime, not data.
@@ -143,7 +153,10 @@ services:
       PHOENIX_POSTGRES_PASSWORD: ${PHOENIX_POSTGRES_PASSWORD:-development-only-change-me}
     ports: ["127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"]
     volumes:
-      - hope_pgdata:/var/lib/postgresql/data
+      # PostgreSQL 18 moved PGDATA to /var/lib/postgresql/<major>/docker and
+      # declares its VOLUME at /var/lib/postgresql. Mounting .../data here
+      # would leave the real data directory on an anonymous volume.
+      - hope_pgdata:/var/lib/postgresql
       - ./infra/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-hope-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hope_user} -d ${POSTGRES_DB:-hope_jobs}"]
@@ -186,6 +199,11 @@ services:
       # A 65GB chat model takes minutes to load; keep it resident between the
       # bursts of enrichment work a refresh produces.
       OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-2h}
+      # The interactive and batch queues use different chat models. Ollama
+      # evicts one model to load another by default, which would make that
+      # split worse than useless: every queue switch would pay a reload. Three
+      # slots covers both chat models plus the embedding model.
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-3}
     volumes: ["hope_ollama:/root/.ollama"]
     ports: ["127.0.0.1:11434:11434"]
     restart: unless-stopped

@@ -417,6 +417,9 @@ def test_clean_linkedin_description_keeps_short_legit_text() -> None:
 
 @pytest.mark.unit
 def test_clean_linkedin_description_collapses_blank_runs() -> None:
-    text = "First paragraph of the description. It is long enough to be real.\n\n\n\nSecond paragraph."
+    text = (
+        "First paragraph of the description. It is long enough to be real."
+        "\n\n\n\nSecond paragraph."
+    )
     cleaned = clean_linkedin_description(text)
     assert "\n\n\n" not in cleaned

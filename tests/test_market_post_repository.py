@@ -99,8 +99,6 @@ def test_insert_then_dedup_and_update(session_factory) -> None:  # noqa: ANN001
     assert (changed.inserted, changed.updated, changed.unchanged) == (0, 1, 0)
 
     with session_scope(session_factory) as db:
-        rows = list(
-            db.scalars(select(MarketPost).where(MarketPost.source == _SOURCE))
-        )
+        rows = list(db.scalars(select(MarketPost).where(MarketPost.source == _SOURCE)))
         assert len(rows) == 1
         assert rows[0].content == "Hiring TWO data analysts."

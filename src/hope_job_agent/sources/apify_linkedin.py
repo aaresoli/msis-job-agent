@@ -528,9 +528,7 @@ def clean_linkedin_description(text: str) -> str:
 
     cleaned = text
     if first_real_index is not None and first_real_index > 0:
-        junk_lines = [
-            line.strip() for line in lines[:first_real_index] if line.strip()
-        ]
+        junk_lines = [line.strip() for line in lines[:first_real_index] if line.strip()]
         if junk_lines and all(len(line) <= 35 for line in junk_lines):
             cleaned = "\n".join(lines[first_real_index:])
 

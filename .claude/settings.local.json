@@ -13,7 +13,9 @@
       "Read(//home/aashish/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/bin/**)",
       "Bash(python3 -)",
       "Bash(.venv/bin/python -c \"import fastapi, uvicorn, httpx, yaml; print\\('deps ok'\\)\")",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(.venv/bin/pip list *)",
+      "Bash(python -c \"print\\(\\)\")"
     ]
   }
 }

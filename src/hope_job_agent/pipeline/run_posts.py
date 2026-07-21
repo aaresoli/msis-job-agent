@@ -190,8 +190,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     pulse = refresh_market_pulse()
     print(
-        f"Market pulse: status={pulse.get('status')} "
-        f"signals={pulse.get('signals')}"
+        f"Market pulse: status={pulse.get('status')} " f"signals={pulse.get('signals')}"
     )
 
 

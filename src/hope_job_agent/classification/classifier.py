@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 
+from hope_job_agent.classification.career_track import infer_career_track
 from hope_job_agent.classification.taxonomy import (
     CONCENTRATION_KEYWORDS,
     MSIS_CONCENTRATIONS,
@@ -11,7 +12,6 @@ from hope_job_agent.classification.taxonomy import (
     ROLE_TO_CONCENTRATIONS,
     normalize_concentrations,
 )
-from hope_job_agent.classification.career_track import infer_career_track
 from hope_job_agent.classification.work_authorization import detect_work_authorization
 from hope_job_agent.models.job import JobPosting
 

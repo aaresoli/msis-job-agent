@@ -1,29 +1,36 @@
-.PHONY: install test lint format smoke quality
+.PHONY: install lock test lint format smoke quality
 
 SMOKE_DIR ?= outputs/smoke
-PYTHON ?= python
+
+# Every target runs through `uv run`, which syncs the environment from uv.lock
+# first. That makes a local `make quality` resolve exactly what CI resolves.
+UV ?= uv
+RUN ?= $(UV) run
 
 install:
-	$(PYTHON) -m pip install -e ".[dev]"
+	$(UV) sync
+
+lock:
+	$(UV) lock
 
 test:
-	$(PYTHON) -m pytest
+	$(RUN) python -m pytest
 
 lint:
-	$(PYTHON) -m ruff check .
-	$(PYTHON) -m mypy src
+	$(RUN) ruff check .
+	$(RUN) mypy src
 
 format:
-	$(PYTHON) -m black .
-	$(PYTHON) -m ruff check --fix .
+	$(RUN) black .
+	$(RUN) ruff check --fix .
 
 smoke:
-	$(PYTHON) -m hope_job_agent.pipeline.run_mvp --source approved_json --input data/sample_jobs.json --profiles data/sample_profiles.json --output $(SMOKE_DIR)/mvp_results.csv --limit 2 --database-url sqlite:///$(SMOKE_DIR)/mvp.sqlite3
+	$(RUN) python -m hope_job_agent.pipeline.run_mvp --source approved_json --input data/sample_jobs.json --profiles data/sample_profiles.json --output $(SMOKE_DIR)/mvp_results.csv --limit 2 --database-url sqlite:///$(SMOKE_DIR)/mvp.sqlite3
 
 quality:
-	$(PYTHON) -m ruff check .
-	$(PYTHON) -m black --check .
-	$(PYTHON) -m mypy src
-	$(PYTHON) -m pytest
+	$(UV) lock --check
+	$(RUN) ruff check .
+	$(RUN) black --check .
+	$(RUN) mypy src
+	$(RUN) python -m pytest
 	$(MAKE) smoke
-

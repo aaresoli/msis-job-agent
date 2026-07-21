@@ -93,7 +93,12 @@ class CoachMessageCreate(ApiModel):
 
 class SourceRunRequest(ApiModel):
     since: datetime | None = None
+    # Caps ranked matches per profile; it does NOT bound how much a source
+    # fetches. Use max_companies for that.
     limit: int | None = Field(default=None, ge=1, le=10000)
+    # company_careers only: sweep at most this many enabled employers, highest
+    # priority first. The bound operators want when exercising a deployment.
+    max_companies: int | None = Field(default=None, ge=1, le=10000)
     dry_run: bool = False
 
 

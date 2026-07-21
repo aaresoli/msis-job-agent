@@ -215,6 +215,7 @@ def refresh_source(
     self: Task,  # Celery binds the task instance via bind=True
     source_name: str,
     limit: int | None = None,
+    max_companies: int | None = None,
     dry_run: bool = False,
     full_refresh: bool = False,
 ) -> dict[str, Any]:
@@ -246,6 +247,7 @@ def refresh_source(
                 profiles_path=None,
                 output_path=Path(tmpdir) / "jobs.json",
                 limit=limit,
+                max_companies=max_companies,
                 dry_run=dry_run,
                 full_refresh=full_refresh,
                 storage="postgres",

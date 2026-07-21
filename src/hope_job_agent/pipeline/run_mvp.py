@@ -147,6 +147,7 @@ def run_mvp_pipeline(
     limit: int | None = None,
     source_since_date: str | None = None,
     source_limit: int | None = None,
+    max_companies: int | None = None,
     company_config_path: Path | None = None,
     local_source: str = "kelleylink_excel",
     company_source: CompanyCareersSource | None = None,
@@ -185,6 +186,7 @@ def run_mvp_pipeline(
         input_path=input_path,
         source_since_date=source_since_date,
         source_limit=source_limit,
+        max_companies=max_companies,
         company_config_path=company_config_path,
         local_source=local_source,
         company_source=company_source,
@@ -377,6 +379,7 @@ def _load_source(
     input_path: Path | None,
     source_since_date: str | None = None,
     source_limit: int | None = None,
+    max_companies: int | None = None,
     company_config_path: Path | None = None,
     local_source: str = "kelleylink_excel",
     company_source: CompanyCareersSource | None = None,
@@ -403,6 +406,7 @@ def _load_source(
         return _load_company_careers(
             config_path=company_config_path or input_path,
             company_source=company_source,
+            max_companies=max_companies,
         )
 
     if source_name == "apify_linkedin":
@@ -418,6 +422,7 @@ def _load_source(
             input_path=input_path,
             source_since_date=source_since_date,
             source_limit=source_limit,
+            max_companies=max_companies,
             company_config_path=company_config_path,
             local_source=local_source,
             company_source=company_source,
@@ -475,13 +480,14 @@ def _load_apify_linkedin(
 def _load_company_careers(
     config_path: Path | None,
     company_source: CompanyCareersSource | None = None,
+    max_companies: int | None = None,
 ) -> SourceLoadResult:
     """Fetch and pre-filter public ATS company career postings."""
 
     LOGGER.info("Loading source adapter: company_careers")
     try:
         source = company_source or CompanyCareersSource(config_path=config_path)
-        result = source.fetch_all_jobs()
+        result = source.fetch_all_jobs(max_companies=max_companies)
     except CompanyCareersConfigError as exc:
         raise MvpPipelineError(str(exc)) from exc
 
@@ -499,6 +505,7 @@ def _load_all_sources(
     input_path: Path | None,
     source_since_date: str | None,
     source_limit: int | None,
+    max_companies: int | None,
     company_config_path: Path | None,
     local_source: str,
     company_source: CompanyCareersSource | None,
@@ -512,6 +519,7 @@ def _load_all_sources(
     company = _load_company_careers(
         config_path=company_config_path,
         company_source=company_source,
+        max_companies=max_companies,
     )
     jobs = list(company.jobs)
     raw_count = company.raw_count
@@ -1003,6 +1011,15 @@ def _build_parser() -> argparse.ArgumentParser:
         help="For ksbit_export, maximum source records returned after filtering.",
     )
     parser.add_argument(
+        "--max-companies",
+        type=int,
+        default=None,
+        help=(
+            "For company_careers, sweep at most this many enabled employers "
+            "(highest priority first)."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Run all steps but skip writing result and summary files.",
@@ -1095,6 +1112,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             limit=args.limit,
             source_since_date=args.source_since_date,
             source_limit=args.source_limit,
+            max_companies=args.max_companies,
             company_config_path=args.company_config,
             local_source=args.local_source,
             apify_dataset_id=args.apify_dataset_id,

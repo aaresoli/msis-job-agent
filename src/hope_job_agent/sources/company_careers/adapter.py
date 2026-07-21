@@ -181,8 +181,18 @@ class CompanyCareersSource(BaseJobSource):
 
         return self.fetch_all_jobs().jobs
 
-    def fetch_all_jobs(self) -> CompanyCareersFetchResult:
-        """Fetch every enabled company and return jobs plus health reports."""
+    def fetch_all_jobs(
+        self, *, max_companies: int | None = None
+    ) -> CompanyCareersFetchResult:
+        """Fetch every enabled company and return jobs plus health reports.
+
+        ``max_companies`` bounds how many enabled employers are swept. It is the
+        only bound that holds regardless of what the boards return:
+        ``max_total_jobs_per_run`` counts jobs *kept* after relevance filtering,
+        so a selective run reaches the end of the company list without ever
+        tripping it. Operators exercising a new deployment want a crawl that
+        stops after a few employers, which is what this provides.
+        """
 
         policy = self.config.fetch_policy
         threshold = self.config.relevance_threshold
@@ -191,7 +201,18 @@ class CompanyCareersSource(BaseJobSource):
         kept_jobs: list[JobPosting] = []
         raw_total = 0
 
-        for target in self.config.enabled_companies():
+        companies = self.config.enabled_companies()
+        if max_companies is not None:
+            if max_companies < 1:
+                raise ValueError("max_companies must be a positive integer")
+            if len(companies) > max_companies:
+                warnings.append(
+                    f"Limited to the first {max_companies} of "
+                    f"{len(companies)} enabled companies."
+                )
+                companies = companies[:max_companies]
+
+        for target in companies:
             if len(kept_jobs) >= policy.max_total_jobs_per_run:
                 warnings.append(
                     "Reached max_total_jobs_per_run="

@@ -50,6 +50,11 @@ class PlatformSettings(BaseSettings):
     minio_secure: bool = False
     smtp_host: str = ""
     smtp_port: int = 587
+    # Local mail catchers (Mailpit) speak plain SMTP and do not advertise
+    # STARTTLS, which smtplib turns into SMTPNotSupportedError. Opting out is
+    # explicit rather than an automatic downgrade, so a real relay that stops
+    # offering TLS fails loudly instead of silently sending links in the clear.
+    smtp_starttls: bool = True
     smtp_username: str = ""
     smtp_password: SecretStr = SecretStr("")
     smtp_from: str = "HOPE Career Intelligence <no-reply@example.edu>"

@@ -214,6 +214,60 @@ def test_max_total_jobs_per_run_is_enforced(transport):
     assert result.kept_count <= 1
 
 
+def test_max_companies_bounds_the_sweep(transport):
+    transport.route(
+        method="GET",
+        contains="boards-api.greenhouse.io/v1/boards/",
+        body=load_fixture("greenhouse_jobs.json"),
+    )
+    companies = [
+        CompanyTarget(
+            company_name=f"Acme {index}",
+            ats_provider="greenhouse",
+            ats_slug=f"acme{index}",
+            priority=index,
+        )
+        for index in range(4)
+    ]
+    source = CompanyCareersSource(
+        config=_config(companies),
+        client=make_client(transport),
+    )
+
+    result = source.fetch_all_jobs(max_companies=2)
+
+    # Only the two highest-priority companies are contacted at all; the bound
+    # has to hold before any request is made, not after filtering.
+    assert [report.company_name for report in result.reports] == ["Acme 0", "Acme 1"]
+    assert any("Limited to the first 2" in warning for warning in result.warnings)
+
+
+def test_max_companies_none_sweeps_every_enabled_company(transport):
+    transport.route(
+        method="GET",
+        contains="boards-api.greenhouse.io/v1/boards/",
+        body=load_fixture("greenhouse_jobs.json"),
+    )
+    companies = [
+        CompanyTarget(
+            company_name=f"Acme {index}",
+            ats_provider="greenhouse",
+            ats_slug=f"acme{index}",
+            priority=index,
+        )
+        for index in range(3)
+    ]
+    source = CompanyCareersSource(
+        config=_config(companies),
+        client=make_client(transport),
+    )
+
+    result = source.fetch_all_jobs()
+
+    assert len(result.reports) == 3
+    assert not any("Limited to the first" in warning for warning in result.warnings)
+
+
 def test_to_summary_shape(transport):
     transport.route(
         method="GET",

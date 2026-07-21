@@ -654,7 +654,7 @@ def test_execute_source_dispatches_refresh_and_dedupes_by_idempotency_key(
         }
         first = client.post(
             "/internal/v1/sources/company_careers/execute",
-            json={"limit": 25},
+            json={"limit": 25, "max_companies": 3},
             headers=headers,
         )
         assert first.status_code == 200
@@ -663,14 +663,19 @@ def test_execute_source_dispatches_refresh_and_dedupes_by_idempotency_key(
             "status": "accepted",
             "task_id": "task-abc",
         }
+        # max_companies is what actually bounds a crawl; limit only truncates
+        # ranked matches, so it must not be mistaken for a fetch bound.
         assert dispatched == [
-            ("company_careers", {"limit": 25, "dry_run": False}),
+            (
+                "company_careers",
+                {"limit": 25, "max_companies": 3, "dry_run": False},
+            ),
         ]
 
         # Replaying the same key returns the stored response without a second run.
         second = client.post(
             "/internal/v1/sources/company_careers/execute",
-            json={"limit": 25},
+            json={"limit": 25, "max_companies": 3},
             headers=headers,
         )
         assert second.status_code == 200

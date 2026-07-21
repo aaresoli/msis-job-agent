@@ -116,7 +116,8 @@ def _send_magic_link(email: str, token: str, settings: PlatformSettings) -> None
         f"{settings.magic_link_ttl_minutes} minutes:\n\n{link}"
     )
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as client:
-        client.starttls()
+        if settings.smtp_starttls:
+            client.starttls()
         password = settings.smtp_password.get_secret_value()
         if settings.smtp_username:
             client.login(settings.smtp_username, password)

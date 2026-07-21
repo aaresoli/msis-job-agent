@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 *)",
+      "Agent(Explore)",
+      "Bash(python *)",
+      "Bash(pip install *)"
+    ]
+  },
+  "$version": 4
+}

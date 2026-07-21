@@ -147,6 +147,7 @@ def execute_source(
     task = refresh_source.delay(
         source_name,
         limit=payload.limit,
+        max_companies=payload.max_companies,
         dry_run=payload.dry_run,
     )
     response = {"source": source_name, "status": "accepted", "task_id": task.id}

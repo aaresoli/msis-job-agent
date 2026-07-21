@@ -24,14 +24,14 @@ export default function LoginPage() {
         <Link href="/" className="display text-2xl">HOPE.</Link>
         <p className="eyebrow mt-16">Private student access</p>
         <h1 className="text-5xl mt-3 mb-4">Return to your career desk.</h1>
-        <p className="text-[#686258] mb-8">We’ll email a one-time link to your invited address. No password to remember.</p>
+        <p className="text-muted mb-8">We’ll email a one-time link to your invited address. No password to remember.</p>
         <form onSubmit={submit} className="space-y-4">
           <label className="block font-semibold" htmlFor="email">University email</label>
           <input id="email" type="email" required value={email} onChange={(event) => setEmail(event.target.value)}
             className="w-full bg-white/60 border border-black/25 px-4 py-3" placeholder="name@iu.edu" />
           <button className="button-primary w-full" disabled={busy}>{busy ? "Sending…" : "Email my sign-in link"}</button>
         </form>
-        {message && <p role="status" className="mt-5 p-4 bg-[#b9c8a2]/35">{message}</p>}
+        {message && <p role="status" className="mt-5 p-4 bg-sage/35">{message}</p>}
       </section>
     </main>
   );

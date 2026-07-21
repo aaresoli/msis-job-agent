@@ -8,12 +8,15 @@ import json
 import logging
 import tempfile
 from datetime import UTC, date, datetime, timedelta
+from functools import lru_cache
 from pathlib import Path
 from uuid import UUID
 
+from celery.signals import worker_process_init
 from docx import Document
 from pypdf import PdfReader
 from sqlalchemy import delete, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from hope_job_agent.ai.checkpoints import (
     delete_checkpoint_thread,
@@ -80,8 +83,27 @@ REFRESHABLE_SOURCES = frozenset({"company_careers", "apify_linkedin"})
 ORCHESTRATOR_SOURCE = "refresh_all"
 
 
-def _factory():
+@lru_cache
+def _factory() -> sessionmaker[Session]:
+    """Return the process-wide session factory.
+
+    Cached because every call to :func:`create_db_engine` builds a *new*
+    connection pool. Celery forks one process per worker child, so an uncached
+    factory leaked a pool per task invocation.
+    """
+
     return create_session_factory(create_db_engine(storage="postgres"))
+
+
+@worker_process_init.connect
+def _reset_factory_after_fork(**_kwargs: object) -> None:
+    """Drop any inherited engine so forked children never share a pool.
+
+    Sockets survive ``fork``; two processes writing to one connection corrupts
+    the protocol. Clearing the cache makes each child build its own.
+    """
+
+    _factory.cache_clear()
 
 
 @celery_app.task(

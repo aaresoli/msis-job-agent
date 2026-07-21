@@ -197,6 +197,18 @@ class JobPostingRecord(Base):
 class JobEmbedding(Base):
     __tablename__ = "job_embeddings"
 
+    # Backs the ``<=>`` ordering in EmbeddingRepository.similarity_search; the
+    # opclass must stay cosine to match. See migration 004_embedding_hnsw.
+    __table_args__ = (
+        Index(
+            "ix_job_embeddings_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_with={"m": 16, "ef_construction": 64},
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
+
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )

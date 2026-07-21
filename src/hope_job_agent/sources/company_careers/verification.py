@@ -150,12 +150,15 @@ def _extract_total(
         return len(payload)
     if not isinstance(payload, dict):
         return None
-    if total_key and isinstance(payload.get(total_key), int):
-        return payload[total_key]
+    total = payload.get(total_key) if total_key else None
+    if isinstance(total, int):
+        return total
     if jobs_key and isinstance(payload.get(jobs_key), list):
         meta = payload.get("meta")
-        if isinstance(meta, dict) and isinstance(meta.get("total"), int):
-            return meta["total"]
+        if isinstance(meta, dict):
+            meta_total = meta.get("total")
+            if isinstance(meta_total, int):
+                return meta_total
         return len(payload[jobs_key])
     items = payload.get("items")
     if isinstance(items, list) and items and isinstance(items[0], dict):

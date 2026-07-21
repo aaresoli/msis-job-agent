@@ -22,6 +22,7 @@ from typing import Any, TypedDict
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import RetryPolicy
 from pydantic import BaseModel, ValidationError
 
@@ -116,8 +117,9 @@ def _exhausted(state: JobEnrichmentState | MarketPulseState) -> bool:
 
 
 def build_job_enrichment_graph(
-    provider: ModelProvider, checkpointer: BaseCheckpointSaver | None = None
-):
+    provider: ModelProvider,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> CompiledStateGraph[Any, Any, Any]:
     schema = json_schema(JobEnrichmentPayload)
     system = (
         "Extract only claims directly supported by the job text. "
@@ -184,8 +186,9 @@ def build_job_enrichment_graph(
 
 
 def build_match_generation_graph(
-    provider: ModelProvider, checkpointer: BaseCheckpointSaver | None = None
-):
+    provider: ModelProvider,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> CompiledStateGraph[Any, Any, Any]:
     schema = json_schema(MatchScorePayload)
 
     def rerank(state: MatchState) -> MatchState:
@@ -276,8 +279,9 @@ def stream_coach_reply(
 
 
 def build_career_coach_graph(
-    provider: ModelProvider, checkpointer: BaseCheckpointSaver | None = None
-):
+    provider: ModelProvider,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> CompiledStateGraph[Any, Any, Any]:
     def answer(state: CoachState) -> CoachState:
         try:
             response = provider.chat(
@@ -296,8 +300,9 @@ def build_career_coach_graph(
 
 
 def build_market_pulse_graph(
-    provider: ModelProvider, checkpointer: BaseCheckpointSaver | None = None
-):
+    provider: ModelProvider,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> CompiledStateGraph[Any, Any, Any]:
     schema = json_schema(MarketSignalsPayload)
     system = (
         "Create time-bounded hiring signals supported by the posts. "

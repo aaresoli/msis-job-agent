@@ -104,7 +104,15 @@ exclude_also = [
 python_version = "3.14"
 packages = ["hope_job_agent"]
 ignore_missing_imports = true
-strict = false
+strict = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
+
+# Celery ships no type information for its task decorator, so every @task
+# function reads as untyped no matter how it is annotated. Scoped to this one
+# module rather than sprinkling nine inline ignores, and deliberately narrow:
+# every other strict check still applies here.
+[[tool.mypy.overrides]]
+module = "hope_job_agent.workers.tasks"
+disallow_untyped_decorators = false

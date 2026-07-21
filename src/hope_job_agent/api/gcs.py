@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -32,7 +33,7 @@ def aggregate_analytics(
     advisor: User = Depends(require_gcs),
     db: Session = Depends(get_db),
     settings: PlatformSettings = Depends(get_platform_settings),
-) -> dict:
+) -> dict[str, Any]:
     minimum = settings.aggregate_minimum_count
     student_count = (
         db.scalar(select(func.count()).select_from(StudentProfileRecord)) or 0
@@ -80,7 +81,7 @@ def source_health(
     limit: int = Query(default=50, ge=1, le=200),
     advisor: User = Depends(require_gcs),
     db: Session = Depends(get_db),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     runs = db.scalars(
         select(SourceRun).order_by(SourceRun.started_at.desc()).limit(limit)
     ).all()
@@ -109,7 +110,7 @@ def source_health(
 @router.get("/review-queue")
 def review_queue(
     advisor: User = Depends(require_gcs), db: Session = Depends(get_db)
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = db.execute(
         select(JobEnrichment, JobPostingRecord)
         .join(JobPostingRecord, JobPostingRecord.id == JobEnrichment.job_id)
@@ -141,7 +142,7 @@ def granted_student_view(
     student_user_id: UUID,
     advisor: User = Depends(require_gcs),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     now = datetime.now(UTC)
     grant = db.scalar(
         select(SharingGrant).where(

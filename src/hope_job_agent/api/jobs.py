@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -30,7 +30,7 @@ router = APIRouter(tags=["discovery"])
 
 def _job_payload(
     job: JobPostingRecord, enrichment: JobEnrichment | None = None
-) -> dict:
+) -> dict[str, Any]:
     return {
         "id": str(job.id),
         "title": job.title,
@@ -71,7 +71,7 @@ def search_jobs(
     offset: int = Query(default=0, ge=0),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     del user
     statement = select(JobPostingRecord).where(JobPostingRecord.status == "active")
     if q:
@@ -123,7 +123,7 @@ def get_job(
     job_id: UUID,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     del user
     job = db.get(JobPostingRecord, job_id)
     if job is None:
@@ -142,7 +142,7 @@ def list_matches(
     limit: int = Query(default=30, ge=1, le=100),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     profile = db.scalar(
         select(StudentProfileRecord).where(StudentProfileRecord.user_id == user.id)
     )
@@ -181,7 +181,7 @@ def record_feedback(
     payload: JobFeedbackCreate,
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     job = db.get(JobPostingRecord, job_id)
     if job is None:
         raise HTTPException(status_code=404)

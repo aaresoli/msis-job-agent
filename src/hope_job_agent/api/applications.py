@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -20,7 +21,7 @@ from hope_job_agent.platform.audit import record_audit
 router = APIRouter(prefix="/applications", tags=["applications"])
 
 
-def _payload(row: ApplicationRecord) -> dict:
+def _payload(row: ApplicationRecord) -> dict[str, Any]:
     return {
         "id": str(row.id),
         "job_id": str(row.job_id) if row.job_id else None,
@@ -38,7 +39,7 @@ def _payload(row: ApplicationRecord) -> dict:
 @router.get("")
 def list_applications(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(ApplicationRecord)
         .where(ApplicationRecord.user_id == user.id)
@@ -52,7 +53,7 @@ def create_application(
     payload: ApplicationCreate,
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     row = ApplicationRecord(
         user_id=user.id,
         job_id=payload.job_id,
@@ -83,7 +84,7 @@ def update_application(
     payload: ApplicationUpdate,
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     row = db.get(ApplicationRecord, application_id)
     if row is None or row.user_id != user.id:
         raise HTTPException(status_code=404)

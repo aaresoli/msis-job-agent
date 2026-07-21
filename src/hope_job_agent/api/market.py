@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,7 +20,7 @@ def list_signals(
     limit: int = Query(default=20, ge=1, le=100),
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     del user
     statement = select(MarketSignal).order_by(MarketSignal.created_at.desc())
     if company:

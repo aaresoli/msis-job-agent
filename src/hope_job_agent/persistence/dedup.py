@@ -109,3 +109,18 @@ def job_identity_keys(job: JobPosting) -> list[tuple[str, str]]:
     if url_pair is not None:
         keys.append(("company_url", f"{url_pair[0]}:{url_pair[1]}"))
     return list(dict.fromkeys(keys))
+
+
+__all__ = [
+    "canonicalize_job_url",
+    "canonicalize_url",
+    "compute_canonical_fingerprint",
+    "compute_content_hash",
+    "job_identity_keys",
+    "normalize_company_name",
+    "normalize_location",
+    "normalize_title",
+    "normalize_url",
+    "source_external_identity",
+    "url_identity",
+]

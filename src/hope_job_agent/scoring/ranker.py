@@ -262,7 +262,9 @@ def rank_jobs_for_student(
     return sorted(matches, key=lambda match: _ranking_sort_key(student, match))
 
 
-def _ranking_sort_key(student: StudentProfile, match: JobMatch) -> tuple:
+def _ranking_sort_key(
+    student: StudentProfile, match: JobMatch
+) -> tuple[int, float, int, str, str]:
     opt_priority = (
         0 if not student.needs_cpt_opt or match.job.opt_cpt_flag is True else 1
     )

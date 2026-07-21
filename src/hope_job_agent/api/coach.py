@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/coach", tags=["career-coach"])
 @router.get("/threads")
 def list_threads(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(CoachThread)
         .where(CoachThread.user_id == user.id)
@@ -39,7 +40,7 @@ def list_threads(
 @router.post("/threads", status_code=status.HTTP_201_CREATED)
 def create_thread(
     user: User = Depends(require_csrf), db: Session = Depends(get_db)
-) -> dict:
+) -> dict[str, Any]:
     thread = CoachThread(user_id=user.id)
     db.add(thread)
     db.flush()
@@ -51,7 +52,7 @@ def list_messages(
     thread_id: UUID,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     thread = db.get(CoachThread, thread_id)
     if thread is None or thread.user_id != user.id:
         raise HTTPException(status_code=404)

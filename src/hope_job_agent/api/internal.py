@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -58,7 +59,7 @@ def invite_user(
     email: str,
     role: str = "student",
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     normalized = email.strip().casefold()
     if role not in {"student", "gcs", "admin"}:
         raise HTTPException(status_code=400, detail="Invalid role")
@@ -75,7 +76,7 @@ def execute_refresh_all(
     payload: SourceRunRequest,
     request: Request,
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Queue one sweep over every scheduled source (jobs, then posts, then signals).
 
     This is the endpoint schedulers should call; ``/sources/{name}/execute``
@@ -113,7 +114,7 @@ def execute_source(
     payload: SourceRunRequest,
     request: Request,
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     if source_name not in REFRESHABLE_SOURCES:
         return {
             "source": source_name,
@@ -165,19 +166,19 @@ def execute_source(
 
 
 @router.post("/batches/enrich", dependencies=[Depends(require_internal_service)])
-def enqueue_enrichment(payload: BatchRequest) -> dict:
+def enqueue_enrichment(payload: BatchRequest) -> dict[str, Any]:
     task_ids = [enrich_job.delay(str(item)).id for item in payload.ids]
     return {"status": "accepted", "task_ids": task_ids}
 
 
 @router.post("/batches/match", dependencies=[Depends(require_internal_service)])
-def enqueue_matching(payload: BatchRequest) -> dict:
+def enqueue_matching(payload: BatchRequest) -> dict[str, Any]:
     task_ids = [generate_profile_matches.delay(str(item)).id for item in payload.ids]
     return {"status": "accepted", "task_ids": task_ids}
 
 
 @router.post("/reconciliation", dependencies=[Depends(require_internal_service)])
-def reconcile_missing_work(db: Session = Depends(get_db)) -> dict:
+def reconcile_missing_work(db: Session = Depends(get_db)) -> dict[str, Any]:
     job_ids = db.scalars(
         select(JobPostingRecord.id)
         .outerjoin(
@@ -199,7 +200,7 @@ def reconcile_missing_work(db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/digests/{cadence}", dependencies=[Depends(require_internal_service)])
-def request_digests(cadence: str, db: Session = Depends(get_db)) -> dict:
+def request_digests(cadence: str, db: Session = Depends(get_db)) -> dict[str, Any]:
     if cadence not in {"daily", "weekly"}:
         raise HTTPException(status_code=400, detail="Unsupported digest cadence")
     users = db.scalars(
@@ -247,7 +248,7 @@ def request_digests(cadence: str, db: Session = Depends(get_db)) -> dict:
 @router.post(
     "/reminders/applications", dependencies=[Depends(require_internal_service)]
 )
-def create_application_reminders(db: Session = Depends(get_db)) -> dict:
+def create_application_reminders(db: Session = Depends(get_db)) -> dict[str, Any]:
     today = datetime.now(UTC).date()
     upcoming = db.scalars(
         select(ApplicationRecord).where(
@@ -271,7 +272,7 @@ def create_application_reminders(db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/alerts/source-health", dependencies=[Depends(require_internal_service)])
-def source_health_alerts(db: Session = Depends(get_db)) -> dict:
+def source_health_alerts(db: Session = Depends(get_db)) -> dict[str, Any]:
     cutoff = datetime.now(UTC) - timedelta(hours=24)
     failures = db.scalars(
         select(SourceRun).where(
@@ -294,7 +295,7 @@ def source_health_alerts(db: Session = Depends(get_db)) -> dict:
 
 
 @router.post("/retention", dependencies=[Depends(require_internal_service)])
-def enqueue_retention() -> dict:
+def enqueue_retention() -> dict[str, Any]:
     task = enforce_retention.delay()
     return {"status": "accepted", "task_id": task.id}
 
@@ -307,7 +308,7 @@ async def apify_webhook(
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
     settings: PlatformSettings = Depends(get_platform_settings),
-) -> dict:
+) -> dict[str, Any]:
     if not settings.source_approval_id:
         raise HTTPException(status_code=403, detail="Apify source is not approved")
     secret = settings.apify_webhook_secret.get_secret_value()
@@ -421,7 +422,7 @@ async def apify_webhook(
 @router.post("/backup/verified", dependencies=[Depends(require_internal_service)])
 def backup_verified(
     request_id: str | None = Header(default=None, alias="X-Request-ID"),
-) -> dict:
+) -> dict[str, Any]:
     return {
         "status": "recorded",
         "request_id": request_id or str(uuid4()),

@@ -9,6 +9,7 @@ can be built off `*.gcs_trends.json` without re-deriving anything.
 from __future__ import annotations
 
 from collections import Counter, defaultdict
+from collections.abc import Callable, Iterable, Sequence
 from datetime import UTC, date, datetime
 
 from hope_job_agent.classification.taxonomy import CONCENTRATION_CODES
@@ -122,7 +123,11 @@ def _opt_cpt_by_concentration(jobs: list[JobPosting]) -> dict[str, dict[str, int
     }
 
 
-def _top_nested(jobs, value_fn, top_n: int) -> dict[str, list[dict[str, object]]]:
+def _top_nested(
+    jobs: Sequence[JobPosting],
+    value_fn: Callable[[JobPosting], Iterable[str]],
+    top_n: int,
+) -> dict[str, list[dict[str, object]]]:
     nested: dict[str, Counter[str]] = defaultdict(Counter)
     for job in jobs:
         for concentration in job.concentration_tags:

@@ -22,6 +22,7 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from hope_job_agent.db.models import JobPostingRecord, SourceRun
 from hope_job_agent.db.platform_models import MarketPost, MarketSignal
@@ -102,7 +103,7 @@ class PostgresJobRepository:
         )
 
     @staticmethod
-    def _load_jobs(session) -> list[tuple[str, JobPosting]]:  # noqa: ANN001
+    def _load_jobs(session: Session) -> list[tuple[str, JobPosting]]:
         rows = session.execute(
             select(JobPostingRecord.id, JobPostingRecord.job_json)
             .where(
@@ -126,7 +127,7 @@ class PostgresJobRepository:
         return entries
 
     @staticmethod
-    def _load_latest_run(session) -> dict[str, Any] | None:  # noqa: ANN001
+    def _load_latest_run(session: Session) -> dict[str, Any] | None:
         run = session.scalar(
             select(SourceRun)
             .where(SourceRun.finished_at.is_not(None))
@@ -142,7 +143,8 @@ class PostgresJobRepository:
         return {
             "run_id": str(run.id),
             "source": run.source_name,
-            "completed_at": run.finished_at.isoformat(),
+            # The query filters finished_at IS NOT NULL.
+            "completed_at": run.finished_at.isoformat() if run.finished_at else "",
             "unique_count": int(unique_count),
             "runtime_seconds": summary.get("runtime_seconds"),
         }
@@ -205,7 +207,7 @@ class PostgresPostRepository:
         return PostsSnapshot(posts=posts, latest_post_at=latest, db_exists=True)
 
     @staticmethod
-    def _load_signals(session) -> dict[str, list[PostSignalView]]:  # noqa: ANN001
+    def _load_signals(session: Session) -> dict[str, list[PostSignalView]]:
         rows = session.scalars(
             select(MarketSignal)
             .order_by(MarketSignal.created_at.desc())
@@ -225,8 +227,8 @@ class PostgresPostRepository:
         return by_post
 
     @staticmethod
-    def _load_posts(  # noqa: ANN001
-        session,
+    def _load_posts(
+        session: Session,
         signals_by_post: dict[str, list[PostSignalView]],
     ) -> list[MarketPostView]:
         rows = session.scalars(

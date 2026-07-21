@@ -10,8 +10,10 @@ import tempfile
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
+from celery import Task
 from celery.signals import worker_process_init
 from docx import Document
 from pypdf import PdfReader
@@ -112,7 +114,7 @@ def _reset_factory_after_fork(**_kwargs: object) -> None:
     retry_backoff=True,
     max_retries=3,
 )
-def enrich_job(job_id: str) -> dict:
+def enrich_job(job_id: str) -> dict[str, Any]:
     with session_scope(_factory()) as db:
         job = db.get(JobPostingRecord, UUID(job_id))
         if job is None:
@@ -174,12 +176,12 @@ def enrich_job(job_id: str) -> dict:
     soft_time_limit=5100,
 )
 def refresh_source(
-    self,  # noqa: ANN001 - Celery binds the task instance
+    self: Task,  # Celery binds the task instance via bind=True
     source_name: str,
     limit: int | None = None,
     dry_run: bool = False,
     full_refresh: bool = False,
-) -> dict:
+) -> dict[str, Any]:
     """Run the ingestion pipeline for one approved source into Postgres.
 
     Retries are disabled: a crawl is expensive and partially-applied work is
@@ -242,7 +244,7 @@ def _record_failed_source_run(source_name: str, error: str) -> None:
 
 
 @celery_app.task(name="hope.enrichment.resume")
-def parse_resume(resume_id: str) -> dict:
+def parse_resume(resume_id: str) -> dict[str, Any]:
     with session_scope(_factory()) as db:
         resume = db.get(ResumeDocument, UUID(resume_id))
         if resume is None:
@@ -300,7 +302,7 @@ def refresh_posts(
     trigger_run: bool = False,
     max_items: int | None = None,
     enqueue_pulse: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Fetch LinkedIn hiring posts from Apify and refresh market signals.
 
     Runs on the ``ingest`` queue. Ingests MSIS-relevant posts into
@@ -332,7 +334,7 @@ def refresh_posts(
     soft_time_limit=10500,
 )
 def refresh_all(
-    self,  # noqa: ANN001 - Celery binds the task instance
+    self: Task,  # Celery binds the task instance via bind=True
     sources: list[str] | None = None,
     limit: int | None = None,
     dry_run: bool = False,
@@ -343,7 +345,7 @@ def refresh_all(
     posts_trigger_run: bool = False,
     posts_max_items: int | None = None,
     refresh_signals: bool = True,
-) -> dict:
+) -> dict[str, Any]:
     """Refresh every scheduled source in one sweep and record a parent run.
 
     Jobs (``job_postings``) and posts (``market_posts``) keep their separate
@@ -391,7 +393,7 @@ def refresh_all(
             )
         )
 
-    signals: dict | None = None
+    signals: dict[str, Any] | None = None
     if refresh_signals and any(
         result.get("inserted") or result.get("updated")
         for result in results
@@ -439,7 +441,7 @@ def refresh_all(
     }
 
 
-def _refresh_job_source(source_name: str, **options) -> dict:  # noqa: ANN003
+def _refresh_job_source(source_name: str, **options: Any) -> dict[str, Any]:
     """Run one job source, converting a crash into a recorded per-source failure."""
 
     try:
@@ -454,7 +456,7 @@ def _refresh_job_source(source_name: str, **options) -> dict:  # noqa: ANN003
         }
 
 
-def _refresh_posts_source(**options) -> dict:  # noqa: ANN003
+def _refresh_posts_source(**options: Any) -> dict[str, Any]:
     """Run the LinkedIn posts ingest, deferring signal extraction to the sweep."""
 
     try:
@@ -476,17 +478,17 @@ def _refresh_posts_source(**options) -> dict:  # noqa: ANN003
         }
 
 
-def _refresh_signals() -> dict:
+def _refresh_signals() -> dict[str, Any]:
     """Re-extract market signals; a local-model outage degrades, not fails."""
 
     try:
-        return refresh_market_pulse.run()
+        return dict(refresh_market_pulse.run())
     except Exception as exc:  # noqa: BLE001 - signals are best-effort
         LOGGER.exception("refresh_all: market pulse failed")
         return {"status": "failed", "error": str(exc)[:4096]}
 
 
-def _start_orchestrator_run(metadata: dict) -> UUID | None:
+def _start_orchestrator_run(metadata: dict[str, Any]) -> UUID | None:
     try:
         with session_scope(_factory()) as db:
             run = SourceRunRepository(db).start_run(
@@ -500,7 +502,7 @@ def _start_orchestrator_run(metadata: dict) -> UUID | None:
 
 def _finish_orchestrator_run(
     run_id: UUID | None,
-    summary: dict,
+    summary: dict[str, Any],
     *,
     failed: bool,
 ) -> None:
@@ -520,7 +522,7 @@ def _finish_orchestrator_run(
 
 
 @celery_app.task(name="hope.market.refresh")
-def refresh_market_pulse() -> dict:
+def refresh_market_pulse() -> dict[str, Any]:
     with session_scope(_factory()) as db:
         posts = db.scalars(
             select(MarketPost)
@@ -576,7 +578,7 @@ def refresh_market_pulse() -> dict:
 
 
 @celery_app.task(name="hope.matching.profile")
-def generate_profile_matches(profile_id: str) -> dict:
+def generate_profile_matches(profile_id: str) -> dict[str, Any]:
     with session_scope(_factory()) as db:
         profile = db.get(StudentProfileRecord, UUID(profile_id))
         if profile is None:
@@ -729,7 +731,7 @@ def _job_from_record(record: JobPostingRecord) -> JobPosting:
 
 
 @celery_app.task(name="hope.privacy.retention")
-def enforce_retention() -> dict:
+def enforce_retention() -> dict[str, Any]:
     cutoff = datetime.now(UTC) - timedelta(days=90)
     deleted_users: set[UUID] = set()
     with session_scope(_factory()) as db:
@@ -763,7 +765,7 @@ def enforce_retention() -> dict:
         }
 
 
-def _purge_user(db, user_id: UUID) -> None:
+def _purge_user(db: Session, user_id: UUID) -> None:
     documents = db.scalars(
         select(ResumeDocument).where(ResumeDocument.user_id == user_id)
     ).all()

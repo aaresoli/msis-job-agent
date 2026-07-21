@@ -263,7 +263,7 @@ class ApifyLinkedInPostsSource:
             run = self._get_json(client, f"/actor-runs/{run_id}")["data"]
             status = str(run.get("status") or "")
             if status == "SUCCEEDED":
-                return run
+                return dict(run)
             if status in _TERMINAL_FAILURE_STATUSES:
                 raise ApifyLinkedInPostsError(
                     f"Apify run {run_id} finished with status {status}. Check "

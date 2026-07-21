@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -44,7 +45,7 @@ RESUME_MEDIA_TYPES = {
 @router.get("/profile")
 def get_profile(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict:
+) -> dict[str, Any]:
     profile = db.scalar(
         select(StudentProfileRecord).where(StudentProfileRecord.user_id == user.id)
     )
@@ -63,7 +64,7 @@ def update_profile(
     payload: ProfileUpdate,
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     profile = db.scalar(
         select(StudentProfileRecord).where(StudentProfileRecord.user_id == user.id)
     )
@@ -116,7 +117,7 @@ def create_consent(
     payload: ConsentCreate,
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     consent = ConsentRecord(
         user_id=user.id,
         policy_version=payload.policy_version,
@@ -138,7 +139,7 @@ def create_consent(
 @router.get("/consents")
 def list_consents(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(ConsentRecord)
         .where(ConsentRecord.user_id == user.id)
@@ -161,7 +162,7 @@ def create_sharing_grant(
     payload: SharingGrantCreate,
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     advisor = db.get(User, payload.advisor_user_id)
     if advisor is None or advisor.role not in {"gcs", "admin"}:
         raise HTTPException(status_code=400, detail="Advisor is not available")
@@ -187,7 +188,7 @@ def create_sharing_grant(
 @router.get("/sharing-grants")
 def list_sharing_grants(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = db.execute(
         select(SharingGrant, User)
         .join(User, User.id == SharingGrant.advisor_user_id)
@@ -224,7 +225,7 @@ async def upload_resume(
     file: UploadFile = File(...),
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     if file.content_type not in RESUME_MEDIA_TYPES:
         raise HTTPException(status_code=415, detail="Upload a PDF or DOCX resume")
     content = await file.read(MAX_RESUME_BYTES + 1)
@@ -269,7 +270,7 @@ def get_resume_parse(
     resume_id: str,
     user: User = Depends(current_user),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     resume = db.get(ResumeDocument, resume_id)
     if resume is None or resume.user_id != user.id:
         raise HTTPException(status_code=404)
@@ -287,7 +288,7 @@ def confirm_resume(
     payload: ResumeConfirm,
     user: User = Depends(require_csrf),
     db: Session = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     resume = db.get(ResumeDocument, resume_id)
     if resume is None or resume.user_id != user.id:
         raise HTTPException(status_code=404)
@@ -301,7 +302,7 @@ def confirm_resume(
 @router.get("/notifications")
 def list_notifications(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     rows = db.scalars(
         select(Notification)
         .where(Notification.user_id == user.id)
@@ -325,7 +326,7 @@ def list_notifications(
 @router.post("/deletion", status_code=status.HTTP_202_ACCEPTED)
 def request_deletion(
     user: User = Depends(require_csrf), db: Session = Depends(get_db)
-) -> dict:
+) -> dict[str, Any]:
     request = DeletionRequest(user_id=user.id)
     db.add(request)
     db.flush()
@@ -343,7 +344,7 @@ def request_deletion(
 @router.get("/export")
 def export_my_data(
     user: User = Depends(current_user), db: Session = Depends(get_db)
-) -> dict:
+) -> dict[str, Any]:
     profile = db.scalar(
         select(StudentProfileRecord).where(StudentProfileRecord.user_id == user.id)
     )

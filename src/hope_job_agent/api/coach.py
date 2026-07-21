@@ -11,8 +11,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from hope_job_agent.ai.checkpoints import postgres_checkpointer
-from hope_job_agent.ai.graphs import build_career_coach_graph
+from hope_job_agent.ai.graphs import stream_coach_reply
 from hope_job_agent.ai.provider import get_model_provider
 from hope_job_agent.api.dependencies import current_user, get_db, require_csrf
 from hope_job_agent.api.schemas import CoachMessageCreate
@@ -91,26 +90,15 @@ def stream_message(
     profile_context = profile.profile_json if profile else {}
 
     def events() -> Iterator[str]:
-        with postgres_checkpointer() as checkpointer:
-            graph = build_career_coach_graph(get_model_provider(), checkpointer)
-            result = graph.invoke(
-                {
-                    "user_id": str(user.id),
-                    "question": payload.content,
-                    "context": {"profile": profile_context},
-                },
-                config={"configurable": {"thread_id": f"coach:{thread_id}"}},
-            )
-        response = result["response"]
         chunks: list[str] = []
-        for word in response.split(" "):
-            chunk = f"{word} "
+        for chunk in stream_coach_reply(
+            get_model_provider(), payload.content, {"profile": profile_context}
+        ):
             chunks.append(chunk)
             yield f"event: token\ndata: {json.dumps({'text': chunk})}\n\n"
-        assistant = CoachMessage(
-            thread_id=thread_id, role="assistant", content="".join(chunks)
+        db.add(
+            CoachMessage(thread_id=thread_id, role="assistant", content="".join(chunks))
         )
-        db.add(assistant)
         record_audit(
             db,
             actor_user_id=user.id,
@@ -119,6 +107,9 @@ def stream_message(
             resource_type="coach_thread",
             resource_id=str(thread_id),
         )
+        # The get_db dependency commits at teardown, but that runs only after
+        # the response body is fully consumed. Commit here so the turn is
+        # durable even if the client disconnects mid-stream.
         db.commit()
         yield "event: done\ndata: {}\n\n"
 

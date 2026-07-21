@@ -7,7 +7,7 @@ name = "hope-job-agent"
 version = "0.2.0"
 description = "Local-first Kelley HOPE MSIS career-intelligence platform."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.14"
 authors = [
   { name = "Kelley HOPE MSIS Job Agent Team" }
 ]
@@ -59,11 +59,11 @@ packages = ["src/hope_job_agent"]
 
 [tool.black]
 line-length = 88
-target-version = ["py311"]
+target-version = ["py313"]
 
 [tool.ruff]
 line-length = 88
-target-version = "py311"
+target-version = "py314"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
@@ -84,7 +84,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 packages = ["hope_job_agent"]
 ignore_missing_imports = true
 strict = false

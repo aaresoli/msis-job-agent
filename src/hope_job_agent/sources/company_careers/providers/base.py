@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from html import unescape
 from typing import Any
 
@@ -102,7 +102,7 @@ def parse_date(value: Any) -> date | None:
             seconds = float(value)
             if seconds > 1e11:
                 seconds /= 1000.0
-            return datetime.utcfromtimestamp(seconds).date()
+            return datetime.fromtimestamp(seconds, UTC).date()
         except (OverflowError, OSError, ValueError):
             return None
 

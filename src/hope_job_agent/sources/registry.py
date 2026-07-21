@@ -200,7 +200,7 @@ def create_source_adapter(
     *,
     source_since_date: str | None = None,
     source_limit: int | None = None,
-) -> "BaseJobSource":
+) -> BaseJobSource:
     """Construct an approved local-file source adapter by registry name."""
 
     ensure_source_allowed(source_name)

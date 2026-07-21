@@ -28,7 +28,7 @@ class StudentProfile(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     @model_validator(mode="after")
-    def fill_stage_alias(self) -> "StudentProfile":
+    def fill_stage_alias(self) -> StudentProfile:
         """Keep legacy `stage` tests compatible with the richer profile schema."""
 
         if self.academic_stage is None and self.stage is not None:

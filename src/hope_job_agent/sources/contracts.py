@@ -4,13 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Generic, Protocol, TypeVar
-
-T = TypeVar("T")
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
-class SourceBatch(Generic[T]):
+class SourceBatch[T]:
     records: list[T]
     cursor: str | None = None
     watermark: datetime | None = None
@@ -18,7 +16,7 @@ class SourceBatch(Generic[T]):
     errors: list[str] = field(default_factory=list)
 
 
-class ExternalSourceConnector(Protocol[T]):
+class ExternalSourceConnector[T](Protocol):
     source_name: str
     enabled: bool
 

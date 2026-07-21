@@ -8,6 +8,24 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    # Without a live database the `postgres`-marked tests silently skip, which
+    # is how a dimension mismatch and a cross-test fingerprint collision both
+    # survived in the suite. They now run on every build.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: hope_user
+          POSTGRES_PASSWORD: hope_password
+          POSTGRES_DB: hope_jobs
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hope_user -d hope_jobs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://hope_user:hope_password@localhost:5432/hope_jobs
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -27,11 +45,15 @@ jobs:
         run: uv run black --check .
       - name: Mypy
         run: uv run mypy src
+      # Applies the real migration chain against the service container, so a
+      # broken migration fails here rather than at deploy time. --sql only
+      # renders DDL and would not have caught, say, a bad index expression.
+      - name: Apply migrations
+        run: uv run alembic upgrade head
       - name: Tests
         run: uv run python -m pytest
-      - name: Migration and n8n contracts
+      - name: n8n contracts
         run: |
-          uv run alembic upgrade head --sql > "$RUNNER_TEMP/migration.sql"
           uv run python scripts/validate_n8n_workflows.py
           uv run python scripts/import_n8n_workflows.py --check
       - name: MVP pipeline smoke test
@@ -57,9 +79,23 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=high
+        continue-on-error: true
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+      # The e2e suite was defined in package.json but never ran anywhere.
+      # It covers only public pages, so it needs no API or database.
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7

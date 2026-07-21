@@ -7,7 +7,7 @@ import uuid
 
 import pytest
 
-from hope_job_agent.config.database import build_postgres_url
+from hope_job_agent.config.database import build_postgres_url, embedding_dimension
 from hope_job_agent.db.session import (
     create_db_engine,
     create_session_factory,
@@ -55,10 +55,14 @@ def session_factory():
 
 
 def _job(job_id: str) -> JobPosting:
+    # The title carries job_id so each test gets a genuinely distinct posting.
+    # Repositories dedupe on a canonical fingerprint of title, company, and
+    # location, so a shared title made every test collapse onto the first
+    # test's row -- and inherit its embedding.
     return JobPosting(
         source="ksbit_export",
         source_job_id=job_id,
-        title="Data Analyst Intern",
+        title=f"Data Analyst Intern {job_id}",
         company="Example Analytics",
         location="Bloomington, IN",
         description="Analyze business data with SQL and dashboards.",
@@ -88,7 +92,10 @@ def test_job_repository_upsert_and_duplicate_detection(session_factory):
 @pytest.mark.postgres
 def test_embedding_repository_stores_vector(session_factory):
     job = _job(f"embed-{uuid.uuid4().hex[:8]}")
-    vector = [0.01] * int(os.getenv("EMBEDDING_DIMENSION", "1536"))
+    # Resolve the width the same way the models do. Reading the environment
+    # directly here meant the test carried its own default (1536) while the
+    # application defaulted to 768, so the vector never matched the column.
+    vector = [0.01] * embedding_dimension()
     with session_scope(session_factory) as session:
         jobs = JobPostingRepository(session)
         embeddings = EmbeddingRepository(session)

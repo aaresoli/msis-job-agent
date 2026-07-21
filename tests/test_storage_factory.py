@@ -2,6 +2,7 @@
 
 import pytest
 
+from hope_job_agent.config.database import get_database_settings
 from hope_job_agent.storage import (
     JobStore,
     JobStoreError,
@@ -12,8 +13,23 @@ from hope_job_agent.storage import (
 )
 
 
+@pytest.fixture
+def no_ambient_database_url(monkeypatch):
+    """Assert the default with no DATABASE_URL in the environment.
+
+    ``storage="auto"`` deliberately honours DATABASE_URL when it is set, so
+    this test has to clear it. Otherwise it passes or fails depending on
+    whether the developer or CI job happens to have a database configured.
+    """
+
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    get_database_settings.cache_clear()
+    yield
+    get_database_settings.cache_clear()
+
+
 @pytest.mark.unit
-def test_create_job_store_returns_sqlite_for_empty_url():
+def test_create_job_store_returns_sqlite_for_empty_url(no_ambient_database_url):
     store = create_job_store("")
     try:
         assert isinstance(store, SQLiteJobStore)

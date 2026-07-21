@@ -197,7 +197,7 @@ Environment variables (see `.env.example`):
 
 - `DATABASE_URL` — preferred; example `postgresql+psycopg://hope_user:hope_password@localhost:5432/hope_jobs`
 - `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — used when `DATABASE_URL` is empty
-- `EMBEDDING_DIMENSION` — pgvector column size (default `1536`); changing it requires a new Alembic migration
+- `EMBEDDING_DIMENSION` — pgvector column size (default `768`, matching `embeddinggemma`); changing it requires a new Alembic migration
 
 ### How sources connect to PostgreSQL
 

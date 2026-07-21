@@ -74,13 +74,30 @@ ignore = []
 "src/hope_job_agent/api/*.py" = ["B008"]
 
 [tool.pytest.ini_options]
-addopts = "-q --capture=sys"
+addopts = "-q --capture=sys --cov=hope_job_agent --cov-report=term-missing"
 testpaths = ["tests"]
 pythonpath = ["src"]
 markers = [
   "unit: fast tests with no external services",
   "integration: cross-module tests that may touch the local filesystem",
   "postgres: tests that require a live PostgreSQL instance with pgvector",
+]
+
+[tool.coverage.run]
+source = ["hope_job_agent"]
+branch = true
+
+[tool.coverage.report]
+# Measured 71.7% with branch coverage on. The floor sits just below that so
+# the suite cannot silently regress, with room for ordinary churn. Raise it as
+# coverage improves rather than treating it as a target to sit at.
+fail_under = 70
+show_missing = true
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@overload",
+  "if __name__ == .__main__.:",
 ]
 
 [tool.mypy]

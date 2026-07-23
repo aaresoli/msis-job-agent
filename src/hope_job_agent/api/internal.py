@@ -1,4 +1,9 @@
-"""Private n8n and service-to-service endpoints."""
+"""Private service-to-service endpoints.
+
+These are the operator-facing half of the scheduled work in
+:mod:`hope_job_agent.workers.schedules`: same functions, triggered by hand.
+They are not the scheduler -- nothing polls them.
+"""
 
 from __future__ import annotations
 
@@ -7,32 +12,27 @@ import hmac
 import json
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from pydantic import ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hope_job_agent.api.dependencies import get_db, require_internal_service
 from hope_job_agent.api.schemas import ApifyWebhook, BatchRequest, SourceRunRequest
-from hope_job_agent.db.models import (
-    JobMatchRecord,
-    JobPostingRecord,
-    SourceRun,
-    StudentProfileRecord,
-)
+from hope_job_agent.db.models import SourceRun
 from hope_job_agent.db.platform_models import (
-    ApplicationRecord,
     IdempotencyRecord,
-    JobEnrichment,
     MarketPost,
-    Notification,
     OutboxEvent,
     SourceQuarantineRecord,
     SourceWebhookReceipt,
     User,
 )
+from hope_job_agent.ops.backup import latest_backup
+from hope_job_agent.ops.digests import UnsupportedCadence, queue_digests
+from hope_job_agent.ops.reconcile import find_reconciliation_backlog
+from hope_job_agent.ops.reminders import create_application_reminders
 from hope_job_agent.persistence.job_repository import JobPostingRepository
 from hope_job_agent.platform.settings import PlatformSettings, get_platform_settings
 from hope_job_agent.sources.apify import normalize_apify_job, normalize_apify_post
@@ -41,8 +41,11 @@ from hope_job_agent.sources.registry import (
     SourceComplianceError,
     ensure_source_allowed,
 )
+from hope_job_agent.workers.ops_tasks import backup_database
 from hope_job_agent.workers.tasks import (
+    EMBEDDING_BATCH_SIZE,
     REFRESHABLE_SOURCES,
+    embed_jobs,
     enforce_retention,
     enrich_job,
     generate_profile_matches,
@@ -168,8 +171,26 @@ def execute_source(
 
 @router.post("/batches/enrich", dependencies=[Depends(require_internal_service)])
 def enqueue_enrichment(payload: BatchRequest) -> dict[str, Any]:
-    task_ids = [enrich_job.delay(str(item)).id for item in payload.ids]
-    return {"status": "accepted", "task_ids": task_ids}
+    job_ids = [str(item) for item in payload.ids]
+    task_ids = [enrich_job.delay(item).id for item in job_ids]
+    # Embedding is enqueued alongside, not inside, enrichment: a posting whose
+    # enrichment is routed to review still needs a vector, because similarity
+    # search is what surfaces it at all.
+    embedding_tasks = _enqueue_embeddings(job_ids)
+    return {
+        "status": "accepted",
+        "task_ids": task_ids,
+        "embedding_tasks": embedding_tasks,
+    }
+
+
+def _enqueue_embeddings(job_ids: list[str]) -> list[str]:
+    """Enqueue embedding work in batches the provider can serve in one call."""
+
+    return [
+        embed_jobs.delay(job_ids[start : start + EMBEDDING_BATCH_SIZE]).id
+        for start in range(0, len(job_ids), EMBEDDING_BATCH_SIZE)
+    ]
 
 
 @router.post("/batches/match", dependencies=[Depends(require_internal_service)])
@@ -180,96 +201,36 @@ def enqueue_matching(payload: BatchRequest) -> dict[str, Any]:
 
 @router.post("/reconciliation", dependencies=[Depends(require_internal_service)])
 def reconcile_missing_work(db: Session = Depends(get_db)) -> dict[str, Any]:
-    job_ids = db.scalars(
-        select(JobPostingRecord.id)
-        .outerjoin(
-            JobEnrichment,
-            (JobEnrichment.job_id == JobPostingRecord.id)
-            & (JobEnrichment.version == "enrichment-v1"),
-        )
-        .where(JobPostingRecord.status == "active", JobEnrichment.id.is_(None))
-        .limit(1000)
-    ).all()
-    profile_ids = db.scalars(select(StudentProfileRecord.id).limit(1000)).all()
-    enrichment_tasks = [enrich_job.delay(str(item)).id for item in job_ids]
-    match_tasks = [generate_profile_matches.delay(str(item)).id for item in profile_ids]
+    """Manually trigger the reconciliation the scheduler runs nightly."""
+
+    backlog = find_reconciliation_backlog(db)
     return {
         "status": "accepted",
-        "enrichment_tasks": enrichment_tasks,
-        "match_tasks": match_tasks,
+        "enrichment_tasks": [
+            enrich_job.delay(item).id for item in backlog["unenriched"]
+        ],
+        "match_tasks": [
+            generate_profile_matches.delay(item).id for item in backlog["profiles"]
+        ],
+        "embedding_tasks": _enqueue_embeddings(backlog["unembedded"]),
     }
 
 
 @router.post("/digests/{cadence}", dependencies=[Depends(require_internal_service)])
 def request_digests(cadence: str, db: Session = Depends(get_db)) -> dict[str, Any]:
-    if cadence not in {"daily", "weekly"}:
-        raise HTTPException(status_code=400, detail="Unsupported digest cadence")
-    users = db.scalars(
-        select(User).where(User.role == "student", User.status == "active")
-    ).all()
-    created = 0
-    for user in users:
-        profile = db.scalar(
-            select(StudentProfileRecord).where(StudentProfileRecord.user_id == user.id)
-        )
-        if profile is None:
-            continue
-        match_count = (
-            db.scalar(
-                select(func.count(JobMatchRecord.id)).where(
-                    JobMatchRecord.student_id == profile.id,
-                    JobMatchRecord.status.in_(["ready", "degraded"]),
-                )
-            )
-            or 0
-        )
-        if not match_count:
-            continue
-        db.add(
-            Notification(
-                user_id=user.id,
-                kind=f"{cadence}_digest",
-                title=f"Your {cadence} HOPE brief is ready",
-                body=f"You have {match_count} current career matches to review.",
-                action_url="/today",
-            )
-        )
-        db.add(
-            OutboxEvent(
-                event_type="digest.requested.v1",
-                aggregate_type="user",
-                aggregate_id=str(user.id),
-                payload={"cadence": cadence, "email": user.email},
-            )
-        )
-        created += 1
-    return {"status": "accepted", "digests": created, "cadence": cadence}
+    """Manually queue a digest cadence the scheduler otherwise runs on its own."""
+
+    try:
+        return queue_digests(db, cadence)
+    except UnsupportedCadence as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post(
     "/reminders/applications", dependencies=[Depends(require_internal_service)]
 )
-def create_application_reminders(db: Session = Depends(get_db)) -> dict[str, Any]:
-    today = datetime.now(UTC).date()
-    upcoming = db.scalars(
-        select(ApplicationRecord).where(
-            ApplicationRecord.deadline.is_not(None),
-            ApplicationRecord.deadline >= today,
-            ApplicationRecord.deadline <= today + timedelta(days=7),
-            ApplicationRecord.status.in_(["saved", "preparing"]),
-        )
-    ).all()
-    for application in upcoming:
-        db.add(
-            Notification(
-                user_id=application.user_id,
-                kind="application_deadline",
-                title=f"Deadline: {application.role_title}",
-                body=f"{application.company_name} is due {application.deadline}.",
-                action_url="/applications",
-            )
-        )
-    return {"status": "created", "reminders": len(upcoming)}
+def request_application_reminders(db: Session = Depends(get_db)) -> dict[str, Any]:
+    return create_application_reminders(db)
 
 
 @router.get("/alerts/source-health", dependencies=[Depends(require_internal_service)])
@@ -420,12 +381,35 @@ async def apify_webhook(
     return response
 
 
-@router.post("/backup/verified", dependencies=[Depends(require_internal_service)])
-def backup_verified(
-    request_id: str | None = Header(default=None, alias="X-Request-ID"),
-) -> dict[str, Any]:
+@router.post("/backup", dependencies=[Depends(require_internal_service)])
+def trigger_backup() -> dict[str, Any]:
+    """Run a backup now. The task's single-flight lock rejects an overlap."""
+
+    task = backup_database.delay()
+    return {"status": "accepted", "task_id": task.id}
+
+
+@router.get("/backup/verified", dependencies=[Depends(require_internal_service)])
+def backup_verified(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """Report the most recent backup, from the record the backup task wrote.
+
+    This used to be a POST that returned ``{"status": "recorded"}`` whatever the
+    state of the world -- called nightly by a workflow that was never activated,
+    against a system that had never taken a backup. Reading the row means the
+    answer can be "none", which is the answer that matters.
+    """
+
+    record = latest_backup(db)
+    if record is None:
+        return {"status": "none", "verified": False}
     return {
-        "status": "recorded",
-        "request_id": request_id or str(uuid4()),
-        "verified_at": datetime.now(UTC),
+        "status": record.status,
+        "verified": record.verified,
+        "started_at": record.started_at,
+        "finished_at": record.finished_at,
+        "object_key": record.object_key,
+        "size_bytes": record.size_bytes,
+        "sha256": record.sha256,
+        "verified_tables": record.verified_tables,
+        "error_summary": record.error_summary,
     }

@@ -495,3 +495,34 @@ class IdempotencyRecord(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
+
+
+class BackupRun(Base):
+    """One database backup attempt, its verification, and where it landed.
+
+    Backups need a record that outlives the process taking them. A Prometheus
+    gauge alone cannot answer "when did a backup last succeed?" after a worker
+    restart, and that is precisely the question the staleness alert asks.
+    """
+
+    __tablename__ = "backup_runs"
+    __table_args__ = (Index("ix_backup_runs_finished_at", "finished_at"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=_utcnow
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="running")
+    object_key: Mapped[str | None] = mapped_column(String(512))
+    size_bytes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sha256: Mapped[str | None] = mapped_column(String(64))
+    # A dump nobody has restored is a hope, not a backup. This is only true
+    # after the archive has been loaded into a scratch database and its row
+    # counts checked.
+    verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    verified_tables: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    pruned_objects: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_summary: Mapped[str | None] = mapped_column(Text)

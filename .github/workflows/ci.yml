@@ -36,6 +36,19 @@ jobs:
           python-version: "3.14"
           enable-cache: true
           cache-dependency-glob: uv.lock
+      # tests/test_backup.py exercises a real pg_dump -> pg_restore -> row-count
+      # round trip, and pg_dump refuses to dump a server newer than itself. The
+      # runner ships an older client, so without this the one test that proves
+      # backups are restorable would skip on every build.
+      - name: PostgreSQL 18 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
       # --frozen fails rather than silently re-resolving, so CI installs the
       # exact set recorded in uv.lock and a stale lockfile is a visible error.
       - name: Install
@@ -55,10 +68,15 @@ jobs:
         run: uv run alembic upgrade head
       - name: Tests
         run: uv run python -m pytest
-      - name: n8n contracts
+      # The schedule and the alerting rules are the automation contract now.
+      # tests/test_schedules.py covers the beat entries; promtool is the only
+      # thing that catches a malformed PromQL expression before it silently
+      # fails to load in Prometheus.
+      - name: Prometheus rules
         run: |
-          uv run python scripts/validate_n8n_workflows.py
-          uv run python scripts/import_n8n_workflows.py --check
+          docker run --rm -v "$PWD/infra/prometheus:/p" \
+            --entrypoint promtool prom/prometheus:v3.7.3 \
+            check rules /p/rules/hope.yml
       - name: MVP pipeline smoke test
         run: |
           uv run python -m hope_job_agent.pipeline.run_mvp \

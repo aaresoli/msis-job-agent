@@ -11,7 +11,18 @@ x-app-environment: &app-environment
   OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-}
   OLLAMA_INTERACTIVE_MODEL: ${OLLAMA_INTERACTIVE_MODEL:-}
   OLLAMA_EMBEDDING_MODEL: embeddinggemma
-  OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-32768}
+  OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
+  OLLAMA_INTERACTIVE_NUM_CTX: ${OLLAMA_INTERACTIVE_NUM_CTX:-8192}
+  # Empty on purpose for the batch queue: "low" nearly doubles enrichment
+  # throughput and costs three postings in forty to the review queue. See the
+  # measured table in docs/dgx_spark_deployment.md before changing it.
+  # `-` rather than `:-` so an explicitly empty value is honoured rather than
+  # being treated as unset.
+  OLLAMA_BATCH_REASONING: ${OLLAMA_BATCH_REASONING-}
+  OLLAMA_INTERACTIVE_REASONING: ${OLLAMA_INTERACTIVE_REASONING-medium}
+  # Must equal OLLAMA_NUM_PARALLEL on the ollama service below. The workers
+  # size their fan-out from it.
+  OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-4}
   OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-300}
   OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-2h}
   EMBEDDING_DIMENSION: 768
@@ -29,6 +40,20 @@ x-app-environment: &app-environment
   SOURCE_APPROVAL_ID: ${SOURCE_APPROVAL_ID:-}
   LANGGRAPH_DATABASE_URL: postgresql://${LANGGRAPH_POSTGRES_USER:-hope_langgraph}:${LANGGRAPH_POSTGRES_PASSWORD:-development-only-change-me}@postgres:5432/${LANGGRAPH_POSTGRES_DB:-hope_langgraph}
   OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  # Mail belongs in the shared anchor, not on `app` alone: the digest relay
+  # runs on a worker, so an app-only SMTP config meant magic links were sent
+  # and digests silently were not.
+  #
+  # Empty by default. An unset host means "mail disabled", which send_message
+  # handles gracefully; defaulting to a hostname that may not resolve would
+  # turn every digest into a dead-lettered outbox event instead. Local
+  # development points these at the mailpit container via .env.
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-HOPE Career Intelligence <no-reply@hope.local>}
 
 services:
   app:
@@ -78,11 +103,33 @@ services:
       app: { condition: service_healthy }
     restart: unless-stopped
 
+  # A Celery worker serves no HTTP, so the HTTP healthcheck the Dockerfile
+  # defines for the API can never pass here. Inherited unchanged, it left every
+  # worker permanently "unhealthy" -- which is worse than no healthcheck at
+  # all, because it trains everyone to ignore the one signal that would show a
+  # real outage. Pinging the node by name (rather than bare `inspect ping`,
+  # which any responding worker satisfies) keeps each container reporting on
+  # itself.
   worker-interactive:
     build: .
     profiles: ["platform"]
-    environment: *app-environment
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
     command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q interactive --concurrency=2 --loglevel=INFO
+    healthcheck: &worker-healthcheck
+      test: ["CMD-SHELL", "celery -A hope_job_agent.workers.celery_app:celery_app inspect ping -d celery@$$(hostname) --timeout 10"]
+      interval: 30s
+      timeout: 15s
+      start_period: 30s
+      retries: 3
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -91,8 +138,22 @@ services:
   worker-batch:
     build: .
     profiles: ["platform"]
-    environment: *app-environment
-    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=1 --loglevel=INFO
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    # Matches OLLAMA_NUM_PARALLEL: one Celery child per decode slot, so an
+    # enrichment backlog actually fills the GPU instead of arriving one job at
+    # a time. Raising this above the slot count only moves the queue from
+    # Celery (visible) into Ollama (not).
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=${OLLAMA_NUM_PARALLEL:-4} --loglevel=INFO
+    healthcheck: *worker-healthcheck
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data:ro
@@ -106,11 +167,71 @@ services:
   worker-ingest:
     build: .
     profiles: ["platform"]
-    environment: *app-environment
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
     command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q ingest --concurrency=1 --loglevel=INFO
+    healthcheck: *worker-healthcheck
     volumes:
       - ./config:/app/config:ro
       - ./data:/app/data:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  # Scheduled maintenance: the outbox relay, digests, backups, metric sampling.
+  # Its own queue so a thirty-second relay never waits behind a GPU-bound
+  # enrichment backlog or an hour-long ATS crawl.
+  worker-ops:
+    build: .
+    profiles: ["platform"]
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q ops --concurrency=2 --loglevel=INFO
+    healthcheck: *worker-healthcheck
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    restart: unless-stopped
+
+  # The scheduler. Replaces nine n8n workflows that were inert by construction:
+  # they shipped inactive and only existed after a manual import. This starts
+  # with the platform profile and its schedule lives in
+  # src/hope_job_agent/workers/schedules.py.
+  #
+  # Exactly one replica. Two beats means every scheduled task fires twice.
+  beat:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: celery -A hope_job_agent.workers.celery_app:celery_app beat --schedule /var/lib/celery/beat-schedule --loglevel=INFO
+    # The Dockerfile's HTTP healthcheck is for the API; beat serves nothing and
+    # would sit permanently unhealthy, which trains everyone to ignore the one
+    # signal that shows a real outage. Beat's liveness is
+    # hope_beat_heartbeat_timestamp_seconds and the HopeBeatDown alert -- a
+    # container-level check could not tell a running beat from a wedged one
+    # anyway.
+    healthcheck:
+      disable: true
+    volumes:
+      - hope_beat:/var/lib/celery
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
@@ -131,7 +252,7 @@ services:
     #
     # -d postgres is required: psql otherwise defaults to a database named
     # after the user, and no hope_user database exists. pg_dumpall rather than
-    # pg_dump because the cluster also holds the langgraph, n8n, and phoenix
+    # pg_dump because the cluster also holds the langgraph and phoenix
     # databases and their roles.
     #
     # Starting pg18 against a pg16 volume fails loudly rather than corrupting
@@ -145,9 +266,6 @@ services:
       LANGGRAPH_POSTGRES_DB: ${LANGGRAPH_POSTGRES_DB:-hope_langgraph}
       LANGGRAPH_POSTGRES_USER: ${LANGGRAPH_POSTGRES_USER:-hope_langgraph}
       LANGGRAPH_POSTGRES_PASSWORD: ${LANGGRAPH_POSTGRES_PASSWORD:-development-only-change-me}
-      N8N_POSTGRES_DB: ${N8N_POSTGRES_DB:-hope_n8n}
-      N8N_POSTGRES_USER: ${N8N_POSTGRES_USER:-hope_n8n}
-      N8N_POSTGRES_PASSWORD: ${N8N_POSTGRES_PASSWORD:-development-only-change-me}
       PHOENIX_POSTGRES_DB: ${PHOENIX_POSTGRES_DB:-hope_phoenix}
       PHOENIX_POSTGRES_USER: ${PHOENIX_POSTGRES_USER:-hope_phoenix}
       PHOENIX_POSTGRES_PASSWORD: ${PHOENIX_POSTGRES_PASSWORD:-development-only-change-me}
@@ -204,46 +322,77 @@ services:
       # split worse than useless: every queue switch would pay a reload. Three
       # slots covers both chat models plus the embedding model.
       OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-3}
+      # The Spark is bound by memory bandwidth, not compute. A single-stream
+      # decode reads gpt-oss:120b's active weights once per token and leaves
+      # most of the machine idle; concurrent sequences amortize that same read
+      # across the batch, so aggregate throughput scales with slots at close to
+      # unchanged per-token latency. Default 1 was leaving that on the table.
+      #
+      # Slots are paid for in KV cache, which is why the two settings below
+      # travel with this one: at num_ctx 32768 the 120b reserved 16GB of KV for
+      # a *single* slot, and four of those does not fit beside 65GB of weights.
+      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-4}
+      # Required before KV quantization is allowed, and a win on its own for
+      # the prefill-heavy job-description prompts.
+      OLLAMA_FLASH_ATTENTION: ${OLLAMA_FLASH_ATTENTION:-true}
+      # Roughly halves KV cache per slot. q8_0 rather than q4_0: the evidence
+      # quotes have to come back verbatim, which is the first thing a lossy KV
+      # cache degrades. `-` not `:-` so an explicitly empty value rolls back to
+      # Ollama's f16 default instead of silently re-enabling quantization.
+      OLLAMA_KV_CACHE_TYPE: ${OLLAMA_KV_CACHE_TYPE-q8_0}
     volumes: ["hope_ollama:/root/.ollama"]
     ports: ["127.0.0.1:11434:11434"]
     restart: unless-stopped
 
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:2.26.8
-    profiles: ["automation"]
-    command: start
-    environment: &n8n-environment
-      DB_TYPE: postgresdb
-      DB_POSTGRESDB_HOST: postgres
-      DB_POSTGRESDB_DATABASE: ${N8N_POSTGRES_DB:-hope_n8n}
-      DB_POSTGRESDB_USER: ${N8N_POSTGRES_USER:-hope_n8n}
-      DB_POSTGRESDB_PASSWORD: ${N8N_POSTGRES_PASSWORD:-development-only-change-me}
-      EXECUTIONS_MODE: queue
-      QUEUE_BULL_REDIS_HOST: redis
-      QUEUE_BULL_REDIS_DB: 2
-      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-development-only-change-me}
-      N8N_DIAGNOSTICS_ENABLED: "false"
-      N8N_PERSONALIZATION_ENABLED: "false"
-      EXECUTIONS_DATA_PRUNE: "true"
-      EXECUTIONS_DATA_MAX_AGE: 336
-      HOPE_INTERNAL_API_URL: http://app:8000/internal/v1
-      HOPE_INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-development-only-change-me}
-    ports: ["127.0.0.1:5678:5678"]
-    volumes:
-      - hope_n8n:/home/node/.n8n
-      - ./n8n/workflows:/workflows:ro
+  # Pulls exactly the models the environment names. Removes the manual
+  # `ollama pull` step from the runbook and makes a fresh Spark reproducible.
+  #
+  # A one-shot: it exits 0 and the workers gate on that completion, so no task
+  # can reach a model that is not there yet. It deliberately does not warm the
+  # models -- loading 65GB of weights to have them evicted before the first
+  # real request costs minutes and buys nothing; OLLAMA_KEEP_ALIVE is what
+  # keeps them resident once real work arrives.
+  model-init:
+    image: ollama/ollama:0.17.0
+    profiles: ["ai"]
+    entrypoint: ["/bin/sh", "-c"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-}
+      INTERACTIVE_MODEL: ${OLLAMA_INTERACTIVE_MODEL:-}
+      EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-embeddinggemma}
+    command:
+      - |
+        set -e
+        until ollama list >/dev/null 2>&1; do
+          echo "waiting for ollama"; sleep 3
+        done
+        for model in "$$CHAT_MODEL" "$$INTERACTIVE_MODEL" "$$EMBEDDING_MODEL"; do
+          [ -n "$$model" ] || continue
+          # An empty OLLAMA_CHAT_MODEL is a supported configuration (the
+          # platform runs on the disabled provider), so a blank entry is
+          # skipped rather than treated as an error.
+          # `ollama list` always prints an explicit tag, so a bare name from
+          # the environment ("embeddinggemma") never matches its listed form
+          # ("embeddinggemma:latest") and would re-pull on every boot.
+          case "$$model" in *:*) tagged="$$model" ;; *) tagged="$$model:latest" ;; esac
+          if ollama list | awk '{print $$1}' | grep -qx "$$tagged"; then
+            echo "present: $$tagged"
+          else
+            echo "pulling: $$model"; ollama pull "$$model"
+          fi
+        done
     depends_on:
-      postgres: { condition: service_healthy }
-      redis: { condition: service_healthy }
-    restart: unless-stopped
+      ollama: { condition: service_started }
+    restart: "no"
 
-  n8n-worker:
-    image: docker.n8n.io/n8nio/n8n:2.26.8
-    profiles: ["automation"]
-    command: worker --concurrency=5
-    environment: *n8n-environment
-    depends_on:
-      n8n: { condition: service_started }
+  alertmanager:
+    image: prom/alertmanager:v0.30.0
+    profiles: ["observability"]
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - hope_alertmanager:/alertmanager
+    ports: ["127.0.0.1:9093:9093"]
     restart: unless-stopped
 
   phoenix:
@@ -266,14 +415,28 @@ services:
     command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=30d
     volumes:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
       - hope_prometheus:/prometheus
     ports: ["127.0.0.1:9090:9090"]
     restart: unless-stopped
+
+  # The loki image runs as uid 10001 but Docker creates the named volume's root
+  # owned by root, so loki could not `mkdir /loki/chunks` and crash-looped from
+  # the first start. Nothing surfaced it: loki is not a Prometheus target, so
+  # there was no `up == 0` to alert on -- logs simply never arrived.
+  loki-init:
+    image: alpine:3.22
+    profiles: ["observability"]
+    command: ["chown", "-R", "10001:10001", "/loki"]
+    volumes: ["hope_loki:/loki"]
+    restart: "no"
 
   loki:
     image: grafana/loki:3.6.0
     profiles: ["observability"]
     command: -config.file=/etc/loki/config.yml
+    depends_on:
+      loki-init: { condition: service_completed_successfully }
     volumes:
       - ./infra/loki/config.yml:/etc/loki/config.yml:ro
       - hope_loki:/loki
@@ -311,10 +474,11 @@ services:
 
 volumes:
   hope_pgdata:
+  hope_beat:
+  hope_alertmanager:
   hope_redis:
   hope_minio:
   hope_ollama:
-  hope_n8n:
   hope_prometheus:
   hope_loki:
   hope_grafana:

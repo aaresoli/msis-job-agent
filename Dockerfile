@@ -33,11 +33,33 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH"
 
+# pg_dump/pg_restore for the nightly backup task. The client major must match
+# the server (pgvector/pgvector:pg18); Debian bookworm ships 15, so the client
+# comes from PGDG rather than the distro. A newer client can read an older
+# server, but not the reverse -- pinning to 18 is what keeps a future server
+# upgrade from silently breaking backups.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl ca-certificates gnupg \
+    && install -d /usr/share/postgresql-common/pgdg \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+       -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+    && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client-18 \
+    && apt-get purge -y --auto-remove gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
 # Unprivileged: nothing in this image needs to write outside its own venv.
 RUN groupadd --system --gid 1001 hope \
     && useradd --system --uid 1001 --gid hope --create-home hope
 
 WORKDIR /app
+
+# celery beat writes its last-run state here. A named volume mounted on a path
+# the image does not create would be owned by root, and the unprivileged user
+# could not write the schedule file.
+RUN install -d -o hope -g hope /var/lib/celery
 
 COPY --from=builder --chown=hope:hope /app /app
 

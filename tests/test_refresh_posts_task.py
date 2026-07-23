@@ -19,7 +19,7 @@ def _fake_session_scope(_factory):  # noqa: ANN001
 @pytest.fixture(autouse=True)
 def _stub_session(monkeypatch: pytest.MonkeyPatch) -> None:
     # Avoid touching Postgres: the task opens session_scope(_factory()).
-    monkeypatch.setattr(tasks, "_factory", lambda: None)
+    monkeypatch.setattr(tasks, "session_factory", lambda: None)
     monkeypatch.setattr(tasks, "session_scope", _fake_session_scope)
 
 

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from hope_job_agent.ai.graphs import CoachStreamStatus, stream_coach_reply
 from hope_job_agent.ai.provider import WORKLOAD_INTERACTIVE, get_model_provider
+from hope_job_agent.api.coach_context import build_coach_context, verified_citations
 from hope_job_agent.api.dependencies import current_user, get_db, require_csrf
 from hope_job_agent.api.schemas import CoachMessageCreate
 from hope_job_agent.db.models import StudentProfileRecord
@@ -88,25 +89,44 @@ def stream_message(
     )
     db.add(CoachMessage(thread_id=thread_id, role="user", content=payload.content))
     db.flush()
-    profile_context = profile.profile_json if profile else {}
+    provider = get_model_provider(WORKLOAD_INTERACTIVE)
+    # Retrieval runs before the stream opens, so a slow lookup shows up as
+    # latency to first token rather than a stall partway through the answer.
+    context = build_coach_context(
+        db,
+        user_id=user.id,
+        profile_id=profile.id if profile else None,
+        profile_json=profile.profile_json if profile else {},
+        question=payload.content,
+        provider=provider,
+    )
 
     def events() -> Iterator[str]:
         chunks: list[str] = []
         stream_status = CoachStreamStatus()
         for chunk in stream_coach_reply(
-            get_model_provider(WORKLOAD_INTERACTIVE),
+            provider,
             payload.content,
-            {"profile": profile_context},
+            context.payload,
             status=stream_status,
         ):
             chunks.append(chunk)
             yield f"event: token\ndata: {json.dumps({'text': chunk})}\n\n"
+        reply = "".join(chunks)
+        # Only postings that were actually in context are stored as citations;
+        # an invented job_id is dropped rather than persisted as a source.
+        citations = verified_citations(reply, context.citable)
         # A stream cut short by an outage is stored with its inline notice
         # attached, never as a clean turn: thread history is what the student
         # rereads later, and a silently truncated answer there is indistinguish-
         # able from advice the coach actually finished giving.
         db.add(
-            CoachMessage(thread_id=thread_id, role="assistant", content="".join(chunks))
+            CoachMessage(
+                thread_id=thread_id,
+                role="assistant",
+                content=reply,
+                citations=citations,
+            )
         )
         record_audit(
             db,

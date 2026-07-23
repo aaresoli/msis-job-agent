@@ -114,5 +114,12 @@ warn_unused_configs = true
 # module rather than sprinkling nine inline ignores, and deliberately narrow:
 # every other strict check still applies here.
 [[tool.mypy.overrides]]
-module = "hope_job_agent.workers.tasks"
+module = [
+  "hope_job_agent.workers.tasks",
+  "hope_job_agent.workers.ops_tasks",
+  # Same cause, different library: prometheus_client's multiprocess helpers and
+  # celery's signal.connect are both untyped.
+  "hope_job_agent.ops.exporter",
+]
 disallow_untyped_decorators = false
+disallow_untyped_calls = false

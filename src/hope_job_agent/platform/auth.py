@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-import smtplib
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 
@@ -12,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from hope_job_agent.db.platform_models import LoginToken, User, UserSession
+from hope_job_agent.delivery.smtp import send_message
 from hope_job_agent.platform.settings import PlatformSettings
 
 
@@ -104,21 +104,12 @@ def rotate_session(
 
 
 def _send_magic_link(email: str, token: str, settings: PlatformSettings) -> None:
-    if not settings.smtp_host:
-        return
     message = EmailMessage()
     message["Subject"] = "Your HOPE Career Intelligence sign-in link"
-    message["From"] = settings.smtp_from
     message["To"] = email
     link = f"{settings.app_base_url.rstrip('/')}/auth/consume?token={token}"
     message.set_content(
         "Use this one-time link to sign in. It expires in "
         f"{settings.magic_link_ttl_minutes} minutes:\n\n{link}"
     )
-    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=15) as client:
-        if settings.smtp_starttls:
-            client.starttls()
-        password = settings.smtp_password.get_secret_value()
-        if settings.smtp_username:
-            client.login(settings.smtp_username, password)
-        client.send_message(message)
+    send_message(message, settings)

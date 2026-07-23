@@ -41,6 +41,13 @@ data/*
 !data/sample_ksbit_jobs.json
 !data/gold_job_postings_labeled.json
 !data/data_quality_thresholds.json
+# Checked-in configuration and fixtures the tests treat as present. Omitting
+# these from the allowlist did not fail loudly: ranking silently fell back to
+# built-in defaults, and the Excel-path tests failed with "input file not
+# found" long after the files were written.
+!data/hybrid_weights.json
+!data/ranking_weights.json
+!data/sample_12twenty_export.xlsx
 outputs/
 logs/
 *.log

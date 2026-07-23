@@ -7,6 +7,7 @@ import io
 import json
 import logging
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, date, datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -16,6 +17,7 @@ from uuid import UUID
 from celery import Task
 from celery.signals import worker_process_init
 from docx import Document
+from langgraph.graph.state import CompiledStateGraph
 from pypdf import PdfReader
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -53,9 +55,10 @@ from hope_job_agent.db.session import (
     create_session_factory,
     session_scope,
 )
-from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.student import StudentProfile
+from hope_job_agent.ops.locks import AlreadyRunning, single_flight
 from hope_job_agent.persistence.embedding_repository import EmbeddingRepository
+from hope_job_agent.persistence.mapping import job_from_record
 from hope_job_agent.persistence.source_run_repository import SourceRunRepository
 from hope_job_agent.pipeline.run_mvp import MvpPipelineError, run_mvp_pipeline
 from hope_job_agent.pipeline.run_posts import ingest_market_posts
@@ -86,9 +89,13 @@ REFRESHABLE_SOURCES = frozenset({"company_careers", "apify_linkedin"})
 # this aggregate out.
 ORCHESTRATOR_SOURCE = "refresh_all"
 
+# Above the task's own 3-hour hard limit, so the lock is released by the run
+# that took it or by the worker dying, never by expiry mid-sweep.
+REFRESH_ALL_LOCK_TTL_SECONDS = 12600
+
 
 @lru_cache
-def _factory() -> sessionmaker[Session]:
+def session_factory() -> sessionmaker[Session]:
     """Return the process-wide session factory.
 
     Cached because every call to :func:`create_db_engine` builds a *new*
@@ -109,7 +116,7 @@ def _reset_factory_after_fork(**_kwargs: object) -> None:
     pooled HTTP client — so it has the same fork hazard and the same fix.
     """
 
-    _factory.cache_clear()
+    session_factory.cache_clear()
     get_model_provider.cache_clear()
 
 
@@ -151,7 +158,7 @@ def _usable_vector(vector: list[float], label: str) -> bool:
     max_retries=3,
 )
 def enrich_job(job_id: str) -> dict[str, Any]:
-    with session_scope(_factory()) as db:
+    with session_scope(session_factory()) as db:
         job = db.get(JobPostingRecord, UUID(job_id))
         if job is None:
             return {"status": "missing", "job_id": job_id}
@@ -178,7 +185,10 @@ def enrich_job(job_id: str) -> dict[str, Any]:
         row = existing or JobEnrichment(
             job_id=job.id,
             version="enrichment-v1",
-            model=provider.health().model,
+            # Read from settings rather than provider.health(), which costs a
+            # GET /api/tags on every newly enriched job to learn a value the
+            # configuration already holds.
+            model=get_platform_settings().ollama_chat_model,
         )
         row.skills = payload.get("skills", [])
         row.requirements = payload.get("requirements", [])
@@ -186,21 +196,86 @@ def enrich_job(job_id: str) -> dict[str, Any]:
         row.confidence = payload.get("confidence")
         row.status = result.get("status", "review")
         row.payload = payload
-        try:
-            embedding_input = f"{job.title}\n{job.description or ''}"
-            vector = provider.embed([EMBED_DOCUMENT_PREFIX + embedding_input])[0]
-            if _usable_vector(vector, "job"):
-                EmbeddingRepository(db).upsert_embedding(
-                    job.id,
-                    vector,
-                    get_platform_settings().ollama_embedding_model,
-                    hashlib.sha256(embedding_input.encode()).hexdigest(),
-                )
-        except ModelUnavailable, IndexError:
-            pass
         if existing is None:
             db.add(row)
         return {"status": row.status, "job_id": job_id}
+
+
+# Embedding is a separate task from enrichment on purpose. It used to run
+# inside enrich_job, which coupled two unrelated failure modes: a posting whose
+# enrichment was routed to review still needs a vector, because similarity
+# search is what surfaces it at all. It also meant one HTTP round trip per job
+# for a model that accepts a whole list at once.
+EMBEDDING_BATCH_SIZE = 32
+
+
+@celery_app.task(name="hope.enrichment.embed")
+def embed_jobs(job_ids: list[str]) -> dict[str, Any]:
+    """Embed a batch of postings in as few provider calls as possible.
+
+    Skips any posting whose stored ``embedding_input_hash`` already matches the
+    text we would send, so re-running over a corpus costs nothing for the parts
+    that have not changed.
+    """
+
+    settings = get_platform_settings()
+    provider = get_model_provider()
+    identifiers = [UUID(raw_id) for raw_id in job_ids]
+    with session_scope(session_factory()) as db:
+        repository = EmbeddingRepository(db)
+        # Two queries for the whole batch rather than two per posting. A task
+        # whose reason for existing is batching should not open with an N+1.
+        jobs = db.scalars(
+            select(JobPostingRecord).where(JobPostingRecord.id.in_(identifiers))
+        ).all()
+        stored = repository.get_embeddings(identifiers)
+
+        pending: list[tuple[UUID, str, str]] = []
+        for job in jobs:
+            text = f"{job.title}\n{job.description or ''}"
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            existing = stored.get(job.id)
+            if (
+                existing is not None
+                and existing.embedding_input_hash == digest
+                and existing.embedding_model == settings.ollama_embedding_model
+            ):
+                continue
+            pending.append((job.id, text, digest))
+
+        if not pending:
+            return {"status": "unchanged", "embedded": 0, "requested": len(job_ids)}
+
+        embedded = 0
+        for start in range(0, len(pending), EMBEDDING_BATCH_SIZE):
+            chunk = pending[start : start + EMBEDDING_BATCH_SIZE]
+            try:
+                vectors = provider.embed(
+                    [EMBED_DOCUMENT_PREFIX + text for _, text, _ in chunk]
+                )
+            except ModelUnavailable:
+                LOGGER.warning("Embedding batch skipped: local model unavailable")
+                break
+            if len(vectors) != len(chunk):
+                LOGGER.warning(
+                    "Embedding response returned %d vectors for %d inputs; "
+                    "batch discarded",
+                    len(vectors),
+                    len(chunk),
+                )
+                continue
+            for (job_id, _, digest), vector in zip(chunk, vectors, strict=True):
+                if not _usable_vector(vector, "job"):
+                    continue
+                repository.upsert_embedding(
+                    job_id, vector, settings.ollama_embedding_model, digest
+                )
+                embedded += 1
+        return {
+            "status": "ready" if embedded else "review",
+            "embedded": embedded,
+            "requested": len(job_ids),
+        }
 
 
 @celery_app.task(
@@ -273,7 +348,7 @@ def _record_failed_source_run(source_name: str, error: str) -> None:
     """Persist a failed SourceRun so source-health alerts can see the failure."""
 
     try:
-        with session_scope(_factory()) as db:
+        with session_scope(session_factory()) as db:
             runs = SourceRunRepository(db)
             run = runs.start_run(source_name, metadata={"trigger": "scheduled"})
             runs.fail_run(run.id, error[:4096])
@@ -283,7 +358,7 @@ def _record_failed_source_run(source_name: str, error: str) -> None:
 
 @celery_app.task(name="hope.enrichment.resume")
 def parse_resume(resume_id: str) -> dict[str, Any]:
-    with session_scope(_factory()) as db:
+    with session_scope(session_factory()) as db:
         resume = db.get(ResumeDocument, UUID(resume_id))
         if resume is None:
             return {"status": "missing", "resume_id": resume_id}
@@ -350,7 +425,7 @@ def refresh_posts(
     has landed.
     """
 
-    with session_scope(_factory()) as db:
+    with session_scope(session_factory()) as db:
         outcome = ingest_market_posts(
             db,
             dataset_id=dataset_id,
@@ -399,8 +474,47 @@ def refresh_all(
 
     Dashboard snapshots are TTL-cached inside the web process, so they pick the
     new rows up on their own — there is no cache for the worker to invalidate.
+
+    Held under a single-flight lock. The scheduler fires every four hours and
+    the operator-facing ``/internal/v1`` route stays available, so without it a
+    manual trigger can land on top of a running sweep and double the request
+    rate against employer boards — the exact thing the adapters rate-limit for.
     """
 
+    try:
+        with single_flight("refresh-all", REFRESH_ALL_LOCK_TTL_SECONDS):
+            return _refresh_all_locked(
+                self,
+                sources=sources,
+                limit=limit,
+                dry_run=dry_run,
+                full_refresh=full_refresh,
+                include_posts=include_posts,
+                posts_dataset_id=posts_dataset_id,
+                posts_run_id=posts_run_id,
+                posts_trigger_run=posts_trigger_run,
+                posts_max_items=posts_max_items,
+                refresh_signals=refresh_signals,
+            )
+    except AlreadyRunning:
+        LOGGER.warning("Source sweep already running; skipping this window")
+        return {"status": "skipped", "reason": "already running"}
+
+
+def _refresh_all_locked(
+    self: Task,
+    *,
+    sources: list[str] | None,
+    limit: int | None,
+    dry_run: bool,
+    full_refresh: bool,
+    include_posts: bool,
+    posts_dataset_id: str | None,
+    posts_run_id: str | None,
+    posts_trigger_run: bool,
+    posts_max_items: int | None,
+    refresh_signals: bool,
+) -> dict[str, Any]:
     selected = list(sources) if sources is not None else sorted(REFRESHABLE_SOURCES)
     started = datetime.now(UTC)
     parent_run_id = _start_orchestrator_run(
@@ -528,7 +642,7 @@ def _refresh_signals() -> dict[str, Any]:
 
 def _start_orchestrator_run(metadata: dict[str, Any]) -> UUID | None:
     try:
-        with session_scope(_factory()) as db:
+        with session_scope(session_factory()) as db:
             run = SourceRunRepository(db).start_run(
                 ORCHESTRATOR_SOURCE, metadata=metadata
             )
@@ -547,7 +661,7 @@ def _finish_orchestrator_run(
     if run_id is None:
         return
     try:
-        with session_scope(_factory()) as db:
+        with session_scope(session_factory()) as db:
             runs = SourceRunRepository(db)
             # finish_run stores the per-source summary and marks the run
             # partial_success when any source errored; a sweep where nothing
@@ -561,7 +675,7 @@ def _finish_orchestrator_run(
 
 @celery_app.task(name="hope.market.refresh")
 def refresh_market_pulse() -> dict[str, Any]:
-    with session_scope(_factory()) as db:
+    with session_scope(session_factory()) as db:
         posts = db.scalars(
             select(MarketPost)
             .order_by(MarketPost.published_at.desc().nullslast())
@@ -617,7 +731,7 @@ def refresh_market_pulse() -> dict[str, Any]:
 
 @celery_app.task(name="hope.matching.profile")
 def generate_profile_matches(profile_id: str) -> dict[str, Any]:
-    with session_scope(_factory()) as db:
+    with session_scope(session_factory()) as db:
         profile = db.get(StudentProfileRecord, UUID(profile_id))
         if profile is None:
             return {"status": "missing", "profile_id": profile_id}
@@ -650,10 +764,9 @@ def generate_profile_matches(profile_id: str) -> dict[str, Any]:
                 ),
             )
         ).all()
+        records_by_id = {record.id: record for record in records if record.description}
         domain_by_id = {
-            record.id: _job_from_record(record)
-            for record in records
-            if record.description
+            job_id: job_from_record(record) for job_id, record in records_by_id.items()
         }
         deterministic = rank_jobs_for_student(student, list(domain_by_id.values()))
         all_rule_by_id = {
@@ -678,10 +791,13 @@ def generate_profile_matches(profile_id: str) -> dict[str, Any]:
                 vector_by_id = {
                     job.id: similarity
                     for job, similarity in EmbeddingRepository(db).similarity_search(
-                        vector, filters={"status": "active"}, limit=100
+                        vector,
+                        filters={"status": "active"},
+                        limit=100,
+                        embedding_model=get_platform_settings().ollama_embedding_model,
                     )
                 }
-        except ModelUnavailable, IndexError:
+        except (ModelUnavailable, IndexError):
             pass
 
         candidate_ids = deterministic_ids | set(vector_by_id)
@@ -699,80 +815,151 @@ def generate_profile_matches(profile_id: str) -> dict[str, Any]:
         db.execute(
             delete(JobMatchRecord).where(JobMatchRecord.student_id == profile.id)
         )
+
+        student_context = _student_context(student)
+        enrichment_by_id = _enrichment_payloads(db, candidates)
+        inputs: list[dict[str, Any]] = [
+            {
+                "student_id": profile_id,
+                "job_id": str(job_id),
+                "rule_score": (
+                    all_rule_by_id[job_id].score if job_id in all_rule_by_id else 0.0
+                ),
+                "vector_score": vector_by_id.get(job_id, 0.0),
+                "evidence": (
+                    all_rule_by_id[job_id].reasons if job_id in all_rule_by_id else []
+                ),
+                "student": student_context,
+                "job": _job_context(
+                    records_by_id[job_id], enrichment_by_id.get(job_id)
+                ),
+            }
+            for job_id in candidates
+            if job_id in records_by_id
+        ]
+
+        # No checkpointer here, unlike the enrichment and market-pulse graphs.
+        # This one is a single stateless node with no retry loop, so a
+        # checkpoint buys no resumability -- it writes ~50 threads of student
+        # data per profile for a computation that is cheaper to redo than to
+        # resume. Leaving it out is also what makes the fan-out below safe:
+        # PostgresSaver wraps one connection, and sharing it across threads is
+        # not something LangGraph promises.
+        graph = build_match_generation_graph(provider)
+        results = _score_matches_concurrently(graph, inputs, provider.max_parallel)
+
         degraded = 0
-        with postgres_checkpointer() as checkpointer:
-            graph = build_match_generation_graph(provider, checkpointer)
-            for job_id in candidates:
-                match = all_rule_by_id.get(job_id)
-                evidence = match.reasons if match else []
-                result = graph.invoke(
-                    {
-                        "student_id": profile_id,
-                        "job_id": str(job_id),
-                        "rule_score": match.score if match else 0.0,
-                        "vector_score": vector_by_id.get(job_id, 0.0),
-                        "evidence": evidence,
-                    },
-                    config={
-                        "configurable": {"thread_id": f"match:{profile_id}:{job_id}"}
-                    },
+        for state, result in zip(inputs, results, strict=True):
+            job_id = UUID(str(state["job_id"]))
+            is_degraded = bool(result["degraded"])
+            degraded += int(is_degraded)
+            evidence = list(state["evidence"])
+            db.add(
+                JobMatchRecord(
+                    student_id=profile.id,
+                    job_id=job_id,
+                    match_score=result["final_score"],
+                    llm_score=result.get("llm_score"),
+                    vector_score=vector_by_id.get(job_id),
+                    rule_score=state["rule_score"],
+                    explanation=result["explanation"],
+                    ranking_version="hybrid-v1",
+                    status="degraded" if is_degraded else "ready",
+                    metadata_json={"evidence": evidence[:5]},
                 )
-                is_degraded = bool(result["degraded"])
-                degraded += int(is_degraded)
-                db.add(
-                    JobMatchRecord(
-                        student_id=profile.id,
-                        job_id=job_id,
-                        match_score=result["final_score"],
-                        llm_score=result.get("llm_score"),
-                        vector_score=vector_by_id.get(job_id),
-                        rule_score=match.score if match else 0.0,
-                        explanation=result["explanation"],
-                        ranking_version="hybrid-v1",
-                        status="degraded" if is_degraded else "ready",
-                        metadata_json={"evidence": evidence[:5]},
-                    )
-                )
+            )
         return {
             "status": "ready" if degraded == 0 else "degraded",
             "profile_id": profile_id,
-            "matches": len(candidates),
+            "matches": len(inputs),
             "awaiting_ai_refinement": degraded,
         }
 
 
-def _job_from_record(record: JobPostingRecord) -> JobPosting:
-    return JobPosting(
-        source=record.source,
-        source_job_id=record.external_job_id,
-        title=record.title,
-        company=record.company_name,
-        location=record.location or "Not specified",
-        description=record.description or "Description not supplied",
-        url=(
-            record.apply_url
-            or record.source_url
-            or record.canonical_url
-            or f"https://unavailable.invalid/jobs/{record.id}"
-        ),
-        posted_date=record.posted_at,
-        employment_type=record.employment_type,
-        seniority=record.seniority,
-        concentration_tags=record.concentration_tags or [],
-        opt_cpt_flag=record.opt_cpt_flag,
-        source_detail=record.source_detail,
-        apply_url=record.apply_url,
-        application_deadline=record.application_deadline,
-        compensation=record.compensation,
-        raw_metadata={"database_id": str(record.id)},
-    )
+def _score_matches_concurrently(
+    graph: CompiledStateGraph[Any, Any, Any],
+    inputs: list[dict[str, Any]],
+    max_parallel: int,
+) -> list[dict[str, Any]]:
+    """Invoke ``graph`` over every input, keeping the server's slots busy.
+
+    Scoring 50 candidates one at a time meant a student waited the sum of 50
+    generations. The pool is sized to the server's decode slots because more
+    in-flight requests than that only queue inside Ollama.
+
+    Results come back in input order so the caller can zip them against the
+    state that produced them. Database writes stay with the caller: the
+    SQLAlchemy Session is not thread-safe.
+    """
+
+    if not inputs:
+        return []
+    workers = max(1, min(max_parallel, len(inputs)))
+    if workers == 1:
+        return [graph.invoke(dict(state)) for state in inputs]
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(lambda state: graph.invoke(dict(state)), inputs))
+
+
+def _student_context(student: StudentProfile) -> dict[str, Any]:
+    """The profile fields a fit judgement can legitimately rest on.
+
+    Deliberately narrow: work authorization and other protected attributes are
+    excluded, so the reranker cannot weigh them even implicitly.
+    """
+
+    return {
+        "concentration": student.concentration,
+        "academic_stage": student.academic_stage,
+        "target_roles": student.target_roles,
+        "skills": student.skills,
+        "location_preferences": student.geo_preference,
+    }
+
+
+def _job_context(
+    record: JobPostingRecord, enrichment: dict[str, Any] | None
+) -> dict[str, Any]:
+    """The posting as the model should see it, bounded so the prompt fits."""
+
+    context: dict[str, Any] = {
+        "title": record.title,
+        "company": record.company_name,
+        "location": record.location,
+        "employment_type": record.employment_type,
+        "seniority": record.seniority,
+        "description": (record.description or "")[:6000],
+    }
+    if enrichment:
+        # Already-extracted structure beats making the model re-derive it from
+        # the same description it is reading anyway.
+        context["extracted_skills"] = enrichment.get("skills", [])[:20]
+        context["extracted_requirements"] = enrichment.get("requirements", [])[:20]
+    return context
+
+
+def _enrichment_payloads(
+    db: Session, job_ids: list[UUID]
+) -> dict[UUID, dict[str, Any]]:
+    """Load ready enrichment payloads for ``job_ids`` in one query."""
+
+    if not job_ids:
+        return {}
+    rows = db.scalars(
+        select(JobEnrichment).where(
+            JobEnrichment.job_id.in_(job_ids),
+            JobEnrichment.version == "enrichment-v1",
+            JobEnrichment.status == "ready",
+        )
+    ).all()
+    return {row.job_id: dict(row.payload or {}) for row in rows}
 
 
 @celery_app.task(name="hope.privacy.retention")
 def enforce_retention() -> dict[str, Any]:
     cutoff = datetime.now(UTC) - timedelta(days=90)
     deleted_users: set[UUID] = set()
-    with session_scope(_factory()) as db:
+    with session_scope(session_factory()) as db:
         profiles = db.scalars(
             select(StudentProfileRecord).where(
                 StudentProfileRecord.program_exit_at.is_not(None),

@@ -69,18 +69,47 @@ class BaseProvider(ABC):
         return value.strip()
 
 
+# How many strip/unescape rounds clean_html will run. Two is enough for the
+# entity-encoded HTML seen in the wild; the third exists only so the loop can
+# observe that nothing changed and stop.
+_MAX_UNESCAPE_ROUNDS = 3
+
+
+def _strip_tags(text: str) -> str:
+    text = re.sub(r"(?i)<\s*br\s*/?\s*>", " ", text)
+    text = re.sub(r"(?i)</\s*(p|li|div|tr|h[1-6]|ul|ol)\s*>", " ", text)
+    return re.sub(r"<[^>]+>", " ", text)
+
+
 def clean_html(value: Any) -> str:
-    """Convert HTML/entity-encoded description text into readable plain text."""
+    """Convert HTML/entity-encoded description text into readable plain text.
+
+    Stripping and unescaping alternate rather than running once each, because
+    some boards return *entity-encoded* HTML. Greenhouse's ``content`` field
+    arrives as ``&lt;div class=&quot;pay-range&quot;&gt;...``: a single strip
+    pass finds no literal tags, and the unescape that followed then turned the
+    entities back into markup that nothing removed. Every Greenhouse posting in
+    the corpus reached the database with its tags intact.
+
+    That is not only cosmetic. The description is what gets embedded, what the
+    enrichment model reads, and what a student sees. The model quotes the
+    *rendered* salary ("$269,800 — $370,900 USD") while the stored text still
+    held ``<span>$269,800</span>``, so the verbatim-quote check could never
+    match and the posting was routed to review.
+    """
 
     if value is None:
         return ""
     text = str(value)
-    text = re.sub(r"(?i)<\s*br\s*/?\s*>", " ", text)
-    text = re.sub(r"(?i)</\s*(p|li|div|tr|h[1-6]|ul|ol)\s*>", " ", text)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = unescape(text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    for _ in range(_MAX_UNESCAPE_ROUNDS):
+        stripped = _strip_tags(text)
+        unescaped = unescape(stripped)
+        if unescaped == text:
+            break
+        text = unescaped
+    # A final strip in case the last unescape exposed one more layer of markup.
+    text = _strip_tags(text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def parse_date(value: Any) -> date | None:

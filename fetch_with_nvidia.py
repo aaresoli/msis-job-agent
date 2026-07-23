@@ -1,36 +1,42 @@
 #!/usr/bin/env python3
 """Fetch MSIS LAMP employers including NVIDIA (rank #26)."""
 
-from pathlib import Path
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 from hope_job_agent.sources.company_careers import (
     CompanyCareersSource,
     load_company_careers_config,
 )
 from hope_job_agent.sources.company_careers.http import HttpClient
-import json
 
 
 def fetch_top_ranked(max_ranks=10):
     """Fetch companies up to max_ranks."""
     config = load_company_careers_config()
-    
+
     # Get enabled companies with student_interest_rank, sorted by rank
-    ranked = [c for c in config.companies 
-              if c.enabled and c.student_interest_rank is not None]
+    ranked = [
+        c for c in config.companies if c.enabled and c.student_interest_rank is not None
+    ]
     ranked.sort(key=lambda x: x.student_interest_rank)
-    
+
     filtered = [c for c in ranked if c.student_interest_rank <= max_ranks]
-    
-    print(f"Fetching jobs from {len(filtered)} MSIS LAMP employers (rank #{max_ranks} and below)...")
+
+    print(
+        f"Fetching jobs from {len(filtered)} MSIS LAMP employers "
+        f"(rank #{max_ranks} and below)..."
+    )
     for c in filtered:
         print(f"  #{c.student_interest_rank}: {c.company_name}")
-    
+
     config.companies = filtered
-    
+
     client = HttpClient(
-        user_agent="KelleyHOPE-MSIS-JobAgent/0.1 (+https://kelley.iu.edu; fetch script)",
+        user_agent=(
+            "KelleyHOPE-MSIS-JobAgent/0.1 (+https://kelley.iu.edu; fetch script)"
+        ),
         min_interval_seconds=1.0,
         timeout_seconds=30.0,
         max_retries=2,
@@ -46,22 +52,27 @@ def fetch_top_ranked(max_ranks=10):
 
     jobs_data = []
     for job in result.jobs:
-        jobs_data.append({
-            "title": job.title,
-            "company": job.company,
-            "location": job.location,
-            "url": job.url,
-            "employment_type": job.employment_type,
-            "career_stage": job.career_stage,
-            "relevance_score": job.relevance_score,
-            "matched_keywords": job.matched_keywords,
-            "concentration_tags": job.concentration_tags or [],
-        })
+        jobs_data.append(
+            {
+                "title": job.title,
+                "company": job.company,
+                "location": job.location,
+                "url": job.url,
+                "employment_type": job.employment_type,
+                "career_stage": job.career_stage,
+                "relevance_score": job.relevance_score,
+                "matched_keywords": job.matched_keywords,
+                "concentration_tags": job.concentration_tags or [],
+            }
+        )
 
     output = {
         "fetched_at": datetime.now(UTC).isoformat(),
         "summary": result.to_summary(),
-        "params": {"max_rank": max_ranks, "companies_count": len(config.enabled_companies())},
+        "params": {
+            "max_rank": max_ranks,
+            "companies_count": len(config.enabled_companies()),
+        },
         "jobs": jobs_data,
     }
 
@@ -80,7 +91,10 @@ def fetch_top_ranked(max_ranks=10):
 
     for report in result.reports:
         status = "✓" if report.status == "ok" else f"✗ ({report.status})"
-        print(f"  {status} {report.company_name}: fetched={report.fetched}, kept={report.kept}")
+        print(
+            f"  {status} {report.company_name}: "
+            f"fetched={report.fetched}, kept={report.kept}"
+        )
 
     print(f"\nOutput saved to: {output_path}")
 

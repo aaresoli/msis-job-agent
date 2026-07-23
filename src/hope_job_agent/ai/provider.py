@@ -11,6 +11,7 @@ from typing import Any, Protocol
 
 import httpx
 
+from hope_job_agent.ai import telemetry
 from hope_job_agent.platform.settings import get_platform_settings
 
 LOGGER = logging.getLogger(__name__)
@@ -32,6 +33,9 @@ class ModelHealth:
 
 class ModelProvider(Protocol):
     name: str
+    # How many requests the backend decodes concurrently. Callers that fan out
+    # size their pool from this instead of picking a number.
+    max_parallel: int
 
     def chat(
         self,
@@ -54,6 +58,7 @@ class ModelUnavailable(RuntimeError):
 
 class DisabledModelProvider:
     name = "disabled"
+    max_parallel = 1
 
     def chat(
         self,
@@ -108,12 +113,21 @@ class OllamaModelProvider:
         timeout_seconds: float = 300.0,
         num_ctx: int = 0,
         keep_alive: str = "",
+        reasoning: str = "",
+        workload: str = WORKLOAD_BATCH,
+        max_parallel: int = 1,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.chat_model = chat_model
         self.embedding_model = embedding_model
         self.num_ctx = num_ctx
         self.keep_alive = keep_alive
+        self.reasoning = reasoning
+        self.workload = workload
+        # How many requests the *server* will decode at once. Callers that fan
+        # out read this rather than guessing: exceeding it does not add
+        # throughput, it just queues inside Ollama where nothing can see it.
+        self.max_parallel = max(1, max_parallel)
         self.timeout = httpx.Timeout(timeout_seconds, connect=5.0)
         # One client per provider so calls reuse the connection. The previous
         # module-level httpx.post opened a fresh TCP connection per request,
@@ -136,6 +150,12 @@ class OllamaModelProvider:
         }
         if self.keep_alive:
             payload["keep_alive"] = self.keep_alive
+        if self.reasoning:
+            # gpt-oss reasons on every call whether or not anyone reads it, and
+            # chat() returns message.content only -- so reasoning tokens are
+            # pure decode cost on the extraction paths. This is the dial that
+            # bounds them.
+            payload["think"] = self.reasoning
         self._warn_if_over_context(messages)
         return payload
 
@@ -176,9 +196,17 @@ class OllamaModelProvider:
         try:
             response = self._client.post(f"{self.base_url}/api/chat", json=payload)
             response.raise_for_status()
-            return str(response.json()["message"]["content"])
+            body = response.json()
+            content = str(body["message"]["content"])
         except (httpx.HTTPError, KeyError, TypeError) as exc:
+            telemetry.record_failure(
+                model=self.chat_model, workload=self.workload, operation="chat"
+            )
             raise ModelUnavailable(f"Ollama chat failed: {exc}") from exc
+        telemetry.record_call(
+            body, model=self.chat_model, workload=self.workload, operation="chat"
+        )
+        return content
 
     def stream_chat(self, messages: Sequence[dict[str, str]]) -> Iterator[str]:
         payload = self._payload(messages, stream=True, options=self._options(0.0))
@@ -196,7 +224,20 @@ class OllamaModelProvider:
                     content = item.get("message", {}).get("content")
                     if content:
                         yield str(content)
+                    # The terminal frame carries the same counters a
+                    # non-streaming reply returns, so the coach path is
+                    # measured on equal terms with the batch graphs.
+                    if item.get("done"):
+                        telemetry.record_call(
+                            item,
+                            model=self.chat_model,
+                            workload=self.workload,
+                            operation="stream_chat",
+                        )
         except (httpx.HTTPError, json.JSONDecodeError) as exc:
+            telemetry.record_failure(
+                model=self.chat_model, workload=self.workload, operation="stream_chat"
+            )
             raise ModelUnavailable(f"Ollama streaming failed: {exc}") from exc
 
     def embed(self, texts: Sequence[str]) -> list[list[float]]:
@@ -209,10 +250,21 @@ class OllamaModelProvider:
         try:
             response = self._client.post(f"{self.base_url}/api/embed", json=payload)
             response.raise_for_status()
-            vectors = response.json()["embeddings"]
-            return [[float(value) for value in vector] for vector in vectors]
+            body = response.json()
+            vectors = body["embeddings"]
+            result = [[float(value) for value in vector] for vector in vectors]
         except (httpx.HTTPError, KeyError, TypeError, ValueError) as exc:
+            telemetry.record_failure(
+                model=self.embedding_model, workload=self.workload, operation="embed"
+            )
             raise ModelUnavailable(f"Ollama embedding failed: {exc}") from exc
+        telemetry.record_call(
+            body,
+            model=self.embedding_model,
+            workload=self.workload,
+            operation="embed",
+        )
+        return result
 
     def health(self) -> ModelHealth:
         """Report ready only if both configured models are actually installed.
@@ -260,13 +312,24 @@ def get_model_provider(workload: str = WORKLOAD_BATCH) -> ModelProvider:
     if not settings.ollama_base_url or not settings.ollama_chat_model:
         return DisabledModelProvider()
     chat_model = settings.ollama_chat_model
-    if workload == WORKLOAD_INTERACTIVE and settings.ollama_interactive_model:
-        chat_model = settings.ollama_interactive_model
+    num_ctx = settings.ollama_num_ctx
+    reasoning = settings.ollama_batch_reasoning
+    if workload == WORKLOAD_INTERACTIVE:
+        if settings.ollama_interactive_model:
+            chat_model = settings.ollama_interactive_model
+        # A smaller window for the coach is not a downgrade: every parallel
+        # slot's KV cache is sized from num_ctx, so the memory this gives back
+        # is what lets the batch model hold more slots at once.
+        num_ctx = settings.ollama_interactive_num_ctx or settings.ollama_num_ctx
+        reasoning = settings.ollama_interactive_reasoning
     return OllamaModelProvider(
         settings.ollama_base_url,
         chat_model,
         settings.ollama_embedding_model,
         timeout_seconds=settings.ollama_timeout_seconds,
-        num_ctx=settings.ollama_num_ctx,
+        num_ctx=num_ctx,
         keep_alive=settings.ollama_keep_alive,
+        reasoning=reasoning,
+        workload=workload,
+        max_parallel=settings.ollama_num_parallel,
     )

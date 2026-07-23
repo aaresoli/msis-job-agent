@@ -19,6 +19,18 @@ def _fake_session_scope(_factory):  # noqa: ANN001
     yield object()
 
 
+@contextmanager
+def _uncontended_lock(_key, _ttl):  # noqa: ANN001
+    """Stand in for the Redis single-flight guard.
+
+    These are unit tests with no broker. Letting the real lock run would make
+    them require Redis to assert things about sweep bookkeeping; the lock's own
+    behaviour is covered in tests/test_single_flight.py.
+    """
+
+    yield
+
+
 class _FakeSourceRuns:
     """Stand-in for SourceRunRepository that records parent-run bookkeeping."""
 
@@ -46,9 +58,10 @@ def _stub_infrastructure(monkeypatch: pytest.MonkeyPatch) -> None:
     _FakeSourceRuns.started = []
     _FakeSourceRuns.finished = []
     _FakeSourceRuns.failed = []
-    monkeypatch.setattr(tasks, "_factory", lambda: None)
+    monkeypatch.setattr(tasks, "session_factory", lambda: None)
     monkeypatch.setattr(tasks, "session_scope", _fake_session_scope)
     monkeypatch.setattr(tasks, "SourceRunRepository", _FakeSourceRuns)
+    monkeypatch.setattr(tasks, "single_flight", _uncontended_lock)
 
 
 def _pipeline_result(source: str) -> MvpPipelineResult:

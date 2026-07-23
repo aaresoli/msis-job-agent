@@ -277,8 +277,18 @@ class JobMatchRecord(Base):
     vector_score: Mapped[float | None] = mapped_column(Float)
     rule_score: Mapped[float | None] = mapped_column(Float)
     explanation: Mapped[str | None] = mapped_column(Text)
+    # default= as well as server_default=, matching every other timestamp in
+    # this module. A server default alone is not enough: when the ORM inserts
+    # many rows in one executemany it sends an explicit NULL for unset columns
+    # rather than omitting them, so the server default never fires and the
+    # NOT NULL constraint rejects the batch. That is precisely the path
+    # generate_profile_matches takes now that it writes a profile's matches
+    # together.
     matched_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        default=_utcnow,
+        server_default=func.now(),
     )
     metadata_json: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB)
     ranking_version: Mapped[str] = mapped_column(

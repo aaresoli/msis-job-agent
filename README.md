@@ -26,13 +26,20 @@ The current code provides:
 - Four LangGraph workflows for enrichment, hybrid matching, advisory coaching,
   and cited Market Pulse signals, with optional PostgreSQL checkpointing
 - Provider-neutral local inference with an Ollama implementation and graceful
-  deterministic/vector fallback
+  deterministic/vector fallback, tuned for concurrent decode on the Spark
+  (parallel slots, KV quantization, per-workload context and reasoning effort)
+- Per-call inference telemetry — prompt/generated tokens, decode seconds, and
+  model-load seconds — exported as Prometheus counters and structured logs, so
+  throughput and model eviction are observable rather than inferred
 - Separate interactive and batch Celery queues
-- Nine disabled-by-default, secret-free n8n workflow exports
+- A Celery Beat scheduler whose schedule is declared in Python
+  (`src/hope_job_agent/workers/schedules.py`), on by default with the platform
+- A transactional-outbox relay that delivers student digest email, plus
+  nightly verified backups, Prometheus alert rules, and Alertmanager
 - Editorial Next.js PWA for Today, Explore, job dossiers, applications, coach,
   privacy/profile, notifications, Market Pulse, and aggregate GCS views
-- Docker Compose profiles for the platform, local AI, automation,
-  observability, and a Caddy/Cloudflare edge
+- Docker Compose profiles for the platform, local AI, observability, and a
+  Caddy/Cloudflare edge, plus a systemd unit so the stack survives a reboot
 - Safe source adapter interfaces and registry guardrails
 - A compliant local JSON approved-source adapter for v0 ingestion demos
 - A KSBIT-compatible local JSON/CSV/XLSX export adapter for approved exports
@@ -96,7 +103,10 @@ Never commit real secrets.
 ## Run the campus platform
 
 The default platform profile starts PostgreSQL, Redis, MinIO, migrations,
-LangGraph checkpoint initialization, FastAPI, workers, and Next.js:
+LangGraph checkpoint initialization, FastAPI, the four Celery workers, the
+scheduler, and Next.js. Scheduled work is on from the moment the platform is
+up -- source refreshes, digests, backups, reconciliation, and retention all run
+without an extra profile or a manual import step:
 
 ```bash
 cp .env.example .env
@@ -107,14 +117,19 @@ docker compose --profile platform up --build
 Optional private profiles:
 
 ```bash
-docker compose --profile platform --profile automation up -d
 docker compose --profile platform --profile ai up -d
 docker compose --profile platform --profile observability up -d
 ```
 
 Only add `--profile edge` after configuring the Caddy host and a Cloudflare
-tunnel token. n8n, Phoenix, Grafana, MinIO, PostgreSQL, Redis, and Ollama bind
-privately or to loopback and must not be added to the public tunnel.
+tunnel token. Phoenix, Grafana, Prometheus, Alertmanager, MinIO, PostgreSQL,
+Redis, and Ollama bind privately or to loopback and must not be added to the
+public tunnel.
+
+The schedule lives in `src/hope_job_agent/workers/schedules.py` and is covered
+by `tests/test_schedules.py`. To keep the platform running across reboots,
+install the systemd unit in `infra/systemd/` -- see the
+[DGX Spark runbook](docs/dgx_spark_deployment.md).
 
 Invite a launch user through the internal API (include unique idempotency and
 request IDs in operational clients), then sign in at `http://localhost:3000`.
@@ -125,8 +140,8 @@ Useful verification commands:
 ```bash
 pytest
 ruff check src tests scripts && black --check src tests scripts && mypy src
-python scripts/validate_n8n_workflows.py
-python scripts/import_n8n_workflows.py  # after the private n8n service is running
+docker run --rm -v "$PWD/infra/prometheus:/p" --entrypoint promtool \
+  prom/prometheus:v3.7.3 check rules /p/rules/hope.yml
 cd web && npm ci && npm run lint && npm run typecheck && npm test && npm run build
 ```
 

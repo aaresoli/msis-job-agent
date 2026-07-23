@@ -156,6 +156,16 @@ def main() -> int:
         help="Context window to request (default: %(default)s)",
     )
     parser.add_argument(
+        "--reasoning",
+        default="",
+        help=(
+            "Reasoning effort to request (gpt-oss: low/medium/high). Empty "
+            "leaves the model default. This is the knob most likely to trade "
+            "throughput against the verbatim-quote contract, so compare "
+            "'schema ok' across settings before lowering it in production."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print why each rejected posting was routed to review",
@@ -167,7 +177,11 @@ def main() -> int:
     reports: list[ModelReport] = []
     for model in args.models:
         provider = OllamaModelProvider(
-            args.base_url, model, num_ctx=args.num_ctx, keep_alive="2h"
+            args.base_url,
+            model,
+            num_ctx=args.num_ctx,
+            keep_alive="2h",
+            reasoning=args.reasoning,
         )
         report = evaluate(provider, model)
         reports.append(report)

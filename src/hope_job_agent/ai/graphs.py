@@ -66,6 +66,11 @@ class MatchState(TypedDict, total=False):
     rule_score: float
     vector_score: float
     evidence: list[str]
+    # The posting and the student, as the model needs to see them. Without
+    # these the reranker is scoring the deterministic rubric's own summary of
+    # itself rather than the fit.
+    job: dict[str, Any]
+    student: dict[str, Any]
     llm_score: float | None
     final_score: float
     explanation: str
@@ -254,6 +259,40 @@ def build_job_enrichment_graph(
     return graph.compile(checkpointer=checkpointer)
 
 
+def _deterministic_explanation(state: MatchState) -> str:
+    """Explain a match from the rubric alone, for when the model is down."""
+
+    evidence = state.get("evidence", [])[:3]
+    return "; ".join(evidence) if evidence else "General profile relevance"
+
+
+MATCH_SYSTEM_PROMPT = (
+    "You judge how well one job posting fits one graduate student. "
+    "Use only the supplied posting and profile. "
+    "Score 0 to 1, where 1 is an excellent fit for this student specifically. "
+    "Weigh role and responsibilities against the student's target roles and "
+    "skills, then seniority against their academic stage, then location "
+    "against their stated preferences. "
+    "Do not reward a posting for being prestigious, and do not infer work "
+    "authorization or sponsorship. "
+    "Give a reason of at most two sentences, addressed to the student, "
+    "naming the specific evidence that drove the score."
+)
+
+
+def _match_prompt(state: MatchState) -> str:
+    """Render the posting and the profile the model has to judge."""
+
+    return json.dumps(
+        {
+            "student": state.get("student", {}),
+            "job": state.get("job", {}),
+            "deterministic_signals": state.get("evidence", []),
+        },
+        default=str,
+    )[:24000]
+
+
 def build_match_generation_graph(
     provider: ModelProvider,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
@@ -261,20 +300,18 @@ def build_match_generation_graph(
     schema = json_schema(MatchScorePayload)
 
     def rerank(state: MatchState) -> MatchState:
+        reason = ""
         try:
             content = provider.chat(
                 [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Score fit from 0 to 1 using only supplied evidence."
-                        ),
-                    },
-                    {"role": "user", "content": "\n".join(state.get("evidence", []))},
+                    {"role": "system", "content": MATCH_SYSTEM_PROMPT},
+                    {"role": "user", "content": _match_prompt(state)},
                 ],
                 schema=schema,
             )
-            llm_score: float | None = _parse(content, MatchScorePayload).score
+            payload = _parse(content, MatchScorePayload)
+            llm_score: float | None = payload.score
+            reason = payload.reason
         except (ModelUnavailable, ValidationError, ValueError):
             # A missing LLM opinion is a supported state: compose_hybrid_score
             # reweights onto the deterministic and vector signals and marks the
@@ -285,14 +322,15 @@ def build_match_generation_graph(
             vector_score=state["vector_score"],
             llm_score=llm_score,
         )
-        evidence = state.get("evidence", [])[:3]
-        explanation = "; ".join(evidence) if evidence else "General profile relevance"
         return {
             **state,
             "llm_score": llm_score,
             "final_score": score.final,
             "degraded": score.degraded,
-            "explanation": explanation,
+            # The model's reason when there is one. The deterministic reasons
+            # are the fallback, and they read as a fallback: they restate the
+            # rubric that produced the score rather than explaining the fit.
+            "explanation": reason or _deterministic_explanation(state),
         }
 
     graph = StateGraph(MatchState)
@@ -306,7 +344,14 @@ COACH_SYSTEM_PROMPT = (
     "You are an advisory career coach. Use only the "
     "supplied student and job context. Never claim to "
     "apply, send, contact, or change data. Mark suggestions "
-    "clearly and cite job IDs when relevant."
+    "clearly. "
+    # The context now actually contains postings, so this is a checkable
+    # instruction rather than a request the model could only satisfy by
+    # inventing an ID: every job_id in the reply is matched back against what
+    # was supplied before anything is stored as a citation.
+    "When you refer to a specific posting, quote its job_id exactly as it "
+    "appears in the context. Never cite a job_id that is not in the context, "
+    "and say so plainly when the context does not answer the question."
 )
 
 COACH_UNAVAILABLE = (

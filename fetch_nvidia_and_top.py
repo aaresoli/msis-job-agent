@@ -1,36 +1,38 @@
 #!/usr/bin/env python3
 """Fetch NVIDIA jobs plus top 5 MSIS-ranked companies."""
 
-from pathlib import Path
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 from hope_job_agent.sources.company_careers import (
     CompanyCareersSource,
     load_company_careers_config,
 )
 from hope_job_agent.sources.company_careers.http import HttpClient
-import json
 
 
 def fetch_top_n_companies(n=6):
     """Fetch top N companies by student_interest_rank."""
     config = load_company_careers_config()
-    
+
     # Get enabled companies with student_interest_rank, sorted by rank
-    ranked = [c for c in config.companies 
-              if c.enabled and c.student_interest_rank is not None]
+    ranked = [
+        c for c in config.companies if c.enabled and c.student_interest_rank is not None
+    ]
     ranked.sort(key=lambda x: x.student_interest_rank)
-    
+
     print(f"Fetching jobs from top {n} MSIS-ranked companies...")
     for c in ranked[:n]:
         print(f"  - {c.company_name} (rank #{c.student_interest_rank})")
-    
+
     # Limit to top N
-    old_companies = config.companies.copy()
     config.companies = ranked[:n]
-    
+
     client = HttpClient(
-        user_agent="KelleyHOPE-MSIS-JobAgent/0.1 (+https://kelley.iu.edu; fetch script)",
+        user_agent=(
+            "KelleyHOPE-MSIS-JobAgent/0.1 (+https://kelley.iu.edu; fetch script)"
+        ),
         min_interval_seconds=0.2,  # Faster for testing
         timeout_seconds=30.0,
         max_retries=2,
@@ -47,17 +49,19 @@ def fetch_top_n_companies(n=6):
     # Convert to serializable format
     jobs_data = []
     for job in result.jobs:
-        jobs_data.append({
-            "title": job.title,
-            "company": job.company,
-            "location": job.location,
-            "url": job.url,
-            "employment_type": job.employment_type,
-            "career_stage": job.career_stage,
-            "relevance_score": job.relevance_score,
-            "matched_keywords": job.matched_keywords,
-            "concentration_tags": job.concentration_tags or [],
-        })
+        jobs_data.append(
+            {
+                "title": job.title,
+                "company": job.company,
+                "location": job.location,
+                "url": job.url,
+                "employment_type": job.employment_type,
+                "career_stage": job.career_stage,
+                "relevance_score": job.relevance_score,
+                "matched_keywords": job.matched_keywords,
+                "concentration_tags": job.concentration_tags or [],
+            }
+        )
 
     # Add summary
     output = {
@@ -83,8 +87,10 @@ def fetch_top_n_companies(n=6):
 
     for report in result.reports:
         status = "✓" if report.status == "ok" else f"✗ ({report.status})"
-        print(f"  {status} {report.company_name}: "
-              f"fetched={report.fetched}, kept={report.kept}")
+        print(
+            f"  {status} {report.company_name}: "
+            f"fetched={report.fetched}, kept={report.kept}"
+        )
 
     print(f"\nOutput saved to: {output_path}")
 

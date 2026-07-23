@@ -12,7 +12,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from hope_job_agent.ai import graphs
+from hope_job_agent.ai import graphs, telemetry
 from hope_job_agent.ai.graphs import (
     COACH_UNAVAILABLE,
     build_career_coach_graph,
@@ -36,6 +36,7 @@ from hope_job_agent.ai.ranking import (
     compose_hybrid_score,
     load_hybrid_weights,
 )
+from hope_job_agent.api.coach_context import verified_citations
 from hope_job_agent.main import app
 from hope_job_agent.platform import rate_limit
 from hope_job_agent.platform.settings import PlatformSettings
@@ -61,6 +62,7 @@ class FakeProvider:
     """
 
     name = "fake"
+    max_parallel = 1
 
     def __init__(self, responses: list[str], stream: list[str] | None = None) -> None:
         self.responses = list(responses)
@@ -182,20 +184,78 @@ def test_custom_blend_changes_the_score(tmp_path) -> None:
     assert score.final == pytest.approx(50.0)
 
 
+def _match_state(**overrides: Any) -> dict[str, Any]:
+    state: dict[str, Any] = {
+        "student_id": "student-1",
+        "job_id": "job-1",
+        "rule_score": 20.0,
+        "vector_score": 0.8,
+        "evidence": ["Python appears in the posting"],
+        "student": {
+            "concentration": "Data Analytics and AI",
+            "target_roles": ["data analyst"],
+            "skills": ["SQL", "Python"],
+        },
+        "job": {
+            "title": "Business Intelligence Analyst",
+            "company": "Eli Lilly",
+            "description": "Build dashboards in Power BI.",
+        },
+    }
+    state.update(overrides)
+    return state
+
+
 def test_match_graph_survives_ollama_outage() -> None:
     graph = build_match_generation_graph(DisabledModelProvider())
-    result = graph.invoke(
-        {
-            "student_id": "student-1",
-            "job_id": "job-1",
-            "rule_score": 20.0,
-            "vector_score": 0.8,
-            "evidence": ["Python appears in the posting"],
-        }
-    )
+    result = graph.invoke(_match_state())
     assert result["degraded"] is True
     assert result["llm_score"] is None
+    # With no model opinion the rubric's own reasons are all that is left, and
+    # they are used verbatim -- the honest fallback, not an explanation.
     assert "Python" in result["explanation"]
+
+
+def test_match_reranker_is_shown_the_posting_and_the_student() -> None:
+    """The reranker must judge the fit, not re-score the rubric's summary.
+
+    It previously received only the deterministic reason strings, so the LLM
+    share of the hybrid blend was the model grading the rule engine's own
+    output. Nothing in the schema catches that -- only the prompt does.
+    """
+
+    provider = FakeProvider([json.dumps({"score": 0.9, "reason": "Strong BI fit."})])
+    graph = build_match_generation_graph(provider)
+    graph.invoke(_match_state())
+
+    prompt = provider.calls[0][-1]["content"]
+    assert "Business Intelligence Analyst" in prompt
+    assert "Power BI" in prompt
+    assert "Data Analytics and AI" in prompt
+
+
+def test_match_explanation_is_the_models_reason_not_the_rubric() -> None:
+    provider = FakeProvider(
+        [json.dumps({"score": 0.9, "reason": "Your SQL work lines up with this role."})]
+    )
+    graph = build_match_generation_graph(provider)
+    result = graph.invoke(_match_state())
+
+    assert result["llm_score"] == pytest.approx(0.9)
+    assert result["degraded"] is False
+    assert result["explanation"] == "Your SQL work lines up with this role."
+
+
+def test_match_score_without_a_reason_is_not_usable() -> None:
+    """A bare number is unauditable and leaves the card with nothing to show."""
+
+    provider = FakeProvider([json.dumps({"score": 0.9})])
+    graph = build_match_generation_graph(provider)
+    result = graph.invoke(_match_state())
+
+    assert result["llm_score"] is None
+    assert result["degraded"] is True
+    assert result["explanation"] == "Python appears in the posting"
 
 
 def _enrichment(**overrides: Any) -> str:
@@ -444,6 +504,38 @@ def test_coach_has_no_external_action_even_when_model_is_unavailable() -> None:
     assert "temporarily unavailable" in result["response"]
 
 
+def test_coach_citations_keep_only_postings_that_were_supplied() -> None:
+    """An invented job_id must never be stored as if it were a source.
+
+    The coach streams, so a fabricated ID cannot be caught before the student
+    sees it. What is controllable is the thread history: only IDs that were
+    actually in context survive into the stored citations.
+    """
+
+    supplied = "11111111-1111-1111-1111-111111111111"
+    invented = "22222222-2222-2222-2222-222222222222"
+    citable = {supplied: {"job_id": supplied, "title": "Analyst", "company": "Lilly"}}
+
+    citations = verified_citations(f"Look at {supplied} and also {invented}.", citable)
+
+    assert [item["job_id"] for item in citations] == [supplied]
+
+
+def test_coach_citations_are_deduplicated_and_case_insensitive() -> None:
+    supplied = "33333333-3333-3333-3333-333333333333"
+    citable = {supplied: {"job_id": supplied, "title": "BI Analyst", "company": "Cook"}}
+
+    citations = verified_citations(
+        f"{supplied} is strong. Again: {supplied.upper()}.", citable
+    )
+
+    assert len(citations) == 1
+
+
+def test_coach_citations_are_empty_when_nothing_was_retrieved() -> None:
+    assert verified_citations("Try job 12345.", {}) == []
+
+
 def test_future_connectors_are_disabled_without_approval() -> None:
     with pytest.raises(SourceDisabledError):
         DenodoConnector(DenodoConfig()).fetch_page()
@@ -547,6 +639,108 @@ def test_chat_sends_the_configured_context_window_and_keep_alive() -> None:
 
     assert captured["options"]["num_ctx"] == 32768
     assert captured["keep_alive"] == "2h"
+
+
+def test_chat_sends_the_configured_reasoning_effort() -> None:
+    """gpt-oss reasons whether or not anyone reads it.
+
+    chat() returns message.content and discards message.thinking, so on the
+    extraction paths those tokens are decode time spent on output nothing sees.
+    This is the dial that bounds them, and it has to reach the server.
+    """
+
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "ok"}})
+
+    provider = OllamaModelProvider(
+        "http://ollama:11434", "gpt-oss:120b", reasoning="low"
+    )
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider.chat([{"role": "user", "content": "hi"}])
+
+    assert captured["think"] == "low"
+
+
+def test_chat_omits_the_reasoning_key_when_unset() -> None:
+    """An unset effort must leave the model's own default alone."""
+
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(200, json={"message": {"content": "ok"}})
+
+    provider = OllamaModelProvider("http://ollama:11434", "gpt-oss:120b")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider.chat([{"role": "user", "content": "hi"}])
+
+    assert "think" not in captured
+
+
+def test_chat_records_the_token_counters_ollama_returns() -> None:
+    """These counters are the only way to tell a busy GPU from an idle one."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        del request
+        return httpx.Response(
+            200,
+            json={
+                "message": {"content": "ok"},
+                "prompt_eval_count": 70,
+                "eval_count": 22,
+                "eval_duration": 500_000_000,
+                "load_duration": 0,
+            },
+        )
+
+    provider = OllamaModelProvider("http://ollama:11434", "counted-model")
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    labels = ("counted-model", WORKLOAD_BATCH, "chat")
+    before = telemetry.GENERATED_TOKENS.labels(*labels)._value.get()
+    provider.chat([{"role": "user", "content": "hi"}])
+    after = telemetry.GENERATED_TOKENS.labels(*labels)._value.get()
+
+    assert after - before == 22
+
+
+def test_interactive_workload_gets_its_own_window_and_reasoning() -> None:
+    """The coach's smaller window is what pays for the batch model's slots.
+
+    Every parallel decode slot reserves KV cache sized from num_ctx, so this is
+    a memory-budget setting, not a per-request preference.
+    """
+
+    settings = PlatformSettings(
+        ollama_base_url="http://ollama:11434",
+        ollama_chat_model="gpt-oss:120b",
+        ollama_interactive_model="gpt-oss:20b",
+        ollama_num_ctx=16384,
+        ollama_interactive_num_ctx=8192,
+        ollama_batch_reasoning="low",
+        ollama_interactive_reasoning="medium",
+    )
+    with _patched_settings(settings):
+        batch = get_model_provider(WORKLOAD_BATCH)
+        interactive = get_model_provider(WORKLOAD_INTERACTIVE)
+
+    assert (batch.num_ctx, batch.reasoning) == (16384, "low")
+    assert (interactive.num_ctx, interactive.reasoning) == (8192, "medium")
+
+
+def test_interactive_window_falls_back_to_the_shared_one_when_unset() -> None:
+    settings = PlatformSettings(
+        ollama_base_url="http://ollama:11434",
+        ollama_chat_model="gpt-oss:120b",
+        ollama_num_ctx=16384,
+        ollama_interactive_num_ctx=0,
+    )
+    with _patched_settings(settings):
+        interactive = get_model_provider(WORKLOAD_INTERACTIVE)
+    assert interactive.num_ctx == 16384
 
 
 def test_interactive_workload_selects_the_smaller_model() -> None:

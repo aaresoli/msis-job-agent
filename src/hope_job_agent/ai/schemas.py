@@ -56,11 +56,25 @@ class JobEnrichmentPayload(BaseModel):
 
 
 class MatchScorePayload(BaseModel):
-    """A single fit score from the reranking model."""
+    """A single fit judgement from the reranking model.
+
+    ``reason`` is required. Without it the model returns a bare number that
+    nothing can audit and no student can act on, and the explanation shown on a
+    match card falls back to restating the deterministic rubric -- which is not
+    an explanation of the model's opinion, it is the input to it.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
     score: float = Field(ge=0.0, le=1.0)
+    reason: str = Field(min_length=1, max_length=600)
+
+    @field_validator("reason")
+    @classmethod
+    def _reject_blank_reason(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("reason must not be blank")
+        return value.strip()
 
 
 class MarketSignalPayload(BaseModel):

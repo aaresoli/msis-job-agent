@@ -25,47 +25,39 @@ class PlatformSettings(BaseSettings):
     source_approval_id: str = ""
     langgraph_database_url: SecretStr = SecretStr("")
     langgraph_checkpoint_ttl_days: int = 90
-    ollama_base_url: str = ""
-    ollama_chat_model: str = ""
-    # Serves the streaming coach, where a student is watching tokens arrive. An
-    # empty value falls back to ollama_chat_model, so a single-model deployment
-    # needs no extra configuration.
-    ollama_interactive_model: str = ""
-    ollama_embedding_model: str = "embeddinggemma"
-    # Ollama silently truncates a prompt that exceeds the context window rather
-    # than erroring. Market Pulse and resume parsing both send ~30k characters,
-    # so the window is set explicitly instead of inherited from the model
-    # default. 0 keeps the model default.
-    ollama_num_ctx: int = 16384
-    # The coach prompt is a question plus retrieved context, never the 30k-char
-    # payloads the batch graphs send. Every slot's KV cache is sized from this,
-    # so giving the interactive model its own smaller window buys back memory
-    # that ollama_num_parallel then spends on concurrency. 0 inherits
-    # ollama_num_ctx.
-    ollama_interactive_num_ctx: int = 8192
+    # OpenAI-compatible vLLM chat endpoint. Empty disables local AI and the
+    # graphs degrade to review/deterministic fallbacks.
+    vllm_base_url: str = ""
+    vllm_chat_model: str = ""
+    # Optional second served-model name for the coach. Empty uses
+    # vllm_chat_model: on one Spark, continuous batching means one 120B
+    # server handles both the batch queue and the coach.
+    vllm_interactive_model: str = ""
+    # Separate OpenAI-compatible embedding server (CPU on the Spark). Empty
+    # falls back to vllm_base_url, which is wrong for a chat-only vLLM.
+    vllm_embedding_base_url: str = ""
+    vllm_embedding_model: str = "google/embeddinggemma-300m"
+    # Server --max-model-len. Used client-side only to warn before a prompt is
+    # likely to be rejected. 0 disables the warning.
+    vllm_max_model_len: int = 16384
+    # Completion budget. Enrichment JSON is short; coach replies need room.
+    vllm_max_tokens: int = 2048
+    vllm_interactive_max_tokens: int = 1024
     # gpt-oss always reasons; the only choice is how much. Empty leaves the
-    # model's own default.
+    # server default. Mapped to OpenAI ``reasoning_effort`` for vLLM's
+    # openai_gptoss parser.
     #
-    # The batch value is deliberately NOT "low", even though the reasoning
-    # tokens are discarded (chat() returns message.content and never reads
-    # message.thinking) and lowering it is the single largest throughput win
-    # available. Measured over 40 real postings, "low" cut enrichment from
-    # 17.2s to 9.4s each but dropped schema acceptance from 36/40 to 33/40 --
-    # three more postings per forty landing in a human review queue. The
-    # committed gold set does not show this: its postings are short summaries
-    # and score 12/12 either way. Staff review time is scarcer than GPU time
-    # here, so the default keeps the quality.
-    ollama_batch_reasoning: str = ""
-    ollama_interactive_reasoning: str = "medium"
-    # Must match OLLAMA_NUM_PARALLEL on the server. The workers use it to size
-    # their own fan-out: more in-flight requests than the server has slots just
-    # queues inside Ollama, where nothing can observe the wait.
-    ollama_num_parallel: int = 4
+    # The batch value is deliberately NOT "low": measured over 40 real
+    # postings under Ollama, "low" cut enrichment from 17.2s to 9.4s each but
+    # dropped schema acceptance from 36/40 to 33/40. Staff review time is
+    # scarcer than GPU time here, so the default keeps the quality.
+    vllm_batch_reasoning: str = ""
+    vllm_interactive_reasoning: str = "medium"
+    # Must match --max-num-seqs on the vLLM server. Workers size their fan-out
+    # from it: more in-flight requests than slots just queue inside vLLM.
+    vllm_max_num_seqs: int = 4
     # A 120B-class model on a long enrichment prompt does not answer in 60s.
-    ollama_timeout_seconds: float = 300.0
-    # Sent per request so residency does not depend on how the server was
-    # launched. Mirrors the OLLAMA_KEEP_ALIVE compose default.
-    ollama_keep_alive: str = "2h"
+    vllm_timeout_seconds: float = 300.0
     redis_url: str = "redis://localhost:6379/0"
     minio_endpoint: str = "localhost:9000"
     minio_access_key: SecretStr = SecretStr("hope_minio")

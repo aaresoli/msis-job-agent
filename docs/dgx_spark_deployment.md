@@ -409,28 +409,41 @@ non-zero job count, and `GET /api/v1/discovery/jobs` returns cards carrying
 track and source-attribution facets. Those facets come from the `job_json`
 payload, so a populated response is also proof the new column is being written.
 
-**5. Idempotency holds.** Re-execute the same workflow within the hour. The
-stored response comes back unchanged and `worker-ingest` starts no second crawl.
+**5. Idempotency holds.** Re-execute the same request within the hour, reusing
+its `Idempotency-Key`. The stored response comes back unchanged and
+`worker-ingest` starts no second crawl.
 
-**6. Apify path.** With `APIFY_TOKEN` set, the apify node of
-**future-sources-refresh** produces a `SourceRun` carrying
-`apify_linkedin_health` metadata. With the token empty it returns
+**6. Apify path.** With `APIFY_TOKEN` set, executing the `apify_linkedin`
+source produces a `SourceRun` carrying `apify_linkedin_health` metadata:
+
+```bash
+curl -s -X POST -H "Authorization: Bearer $INTERNAL_SERVICE_TOKEN" \
+     -H "Idempotency-Key: $(uuidgen)" -H "X-Request-ID: $(uuidgen)" \
+     -H "Content-Type: application/json" -d '{"limit": 5}' \
+     localhost:8000/internal/v1/sources/apify_linkedin/execute
+```
+
+With the token empty it returns
 `{"status": "disabled", "reason": "APIFY_TOKEN is not configured"}`. The
-`ksbit_denodo` node in the same workflow always returns `disabled` — it has no
-approved endpoint mapping, and that is the expected result, not a failure.
+`ksbit_denodo` source always returns `disabled` — it has no approved endpoint
+mapping, and that is the expected result, not a failure.
 
-**7. Failure path.** Set a bogus `APIFY_TOKEN`, restart the workers, and run the
-apify node. Expect a `failed` row in `source_runs`, then:
+The scheduled equivalent is the `hope.sources.refresh_all` beat task, which
+sweeps every approved source every four hours under a single-flight lock.
+
+**7. Failure path.** Set a bogus `APIFY_TOKEN`, restart the workers, and execute
+the source again. Expect a `failed` row in `source_runs`, then:
 
 ```bash
 curl -s -H "Authorization: Bearer $INTERNAL_SERVICE_TOKEN" \
-     -H "Idempotency-Key: $(uuidgen)" -H "X-Request-ID: $(uuidgen)" \
+     -H "X-Request-ID: $(uuidgen)" \
      localhost:8000/internal/v1/alerts/source-health
 # expect: {"status": "attention", "failures": [...]}
 ```
 
-The **source-health-alerts** workflow should then fail loudly on its next run.
-Restore the real token afterwards.
+That endpoint is what replaced the source-health-alerts workflow; Prometheus
+alerts on the same underlying `source_runs` state. Restore the real token
+afterwards.
 
 **8. Tests pass.**
 

@@ -77,6 +77,45 @@ class MatchScorePayload(BaseModel):
         return value.strip()
 
 
+class ResumeProfilePayload(BaseModel):
+    """A profile proposed from a resume, for a human to confirm.
+
+    ``evidence`` carries quotes rather than bare strings so the same
+    verbatim check the enrichment path uses can run here: a resume-derived
+    profile is shown to the student as what the system believes about them,
+    and an invented skill is harder to notice than an invented job attribute.
+
+    Nothing here is authoritative. ``parse_status`` stays ``review`` even on a
+    clean parse, so this is a draft the student edits, never a profile the
+    platform asserts.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str | None = Field(default=None, max_length=256)
+    # Required, and non-empty, on purpose. Given a default these become optional
+    # in the generated JSON Schema, and a structured-output model will happily
+    # omit them -- which validated cleanly as a "ready" profile containing
+    # nothing at all. A resume with no extractable skill is a review case.
+    skills: list[str] = Field(min_length=1)
+    evidence: list[EvidenceItem] = Field(min_length=1)
+    # Genuinely optional: most resumes never state a target role, and requiring
+    # one would push the model to infer exactly what it is told not to.
+    target_roles: list[str] = Field(default_factory=list)
+
+    @field_validator("skills", "target_roles", mode="after")
+    @classmethod
+    def _drop_blanks(cls, value: list[str]) -> list[str]:
+        return [item.strip() for item in value if item and item.strip()]
+
+    @field_validator("skills", mode="after")
+    @classmethod
+    def _require_a_surviving_skill(cls, value: list[str]) -> list[str]:
+        if not value:
+            raise ValueError("at least one non-blank skill is required")
+        return value
+
+
 class MarketSignalPayload(BaseModel):
     """One time-bounded hiring signal, with the posts that support it."""
 

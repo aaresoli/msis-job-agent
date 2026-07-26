@@ -15,10 +15,10 @@ from fastapi.testclient import TestClient
 from hope_job_agent.ai import graphs, telemetry
 from hope_job_agent.ai.graphs import (
     COACH_UNAVAILABLE,
-    build_career_coach_graph,
     build_job_enrichment_graph,
     build_market_pulse_graph,
     build_match_generation_graph,
+    build_resume_parse_graph,
     stream_coach_reply,
 )
 from hope_job_agent.ai.provider import (
@@ -36,7 +36,9 @@ from hope_job_agent.ai.ranking import (
     compose_hybrid_score,
     load_hybrid_weights,
 )
+from hope_job_agent.ai.schemas import ResumeProfilePayload, json_schema
 from hope_job_agent.api.coach_context import verified_citations
+from hope_job_agent.config.database import embedding_dimension
 from hope_job_agent.main import app
 from hope_job_agent.platform import rate_limit
 from hope_job_agent.platform.settings import PlatformSettings
@@ -357,6 +359,97 @@ def test_enrichment_rejects_a_quote_absent_from_the_posting() -> None:
     assert "enrichment" not in result
 
 
+RESUME_TEXT = "Jordan Lee\nBuilt Power BI dashboards in SQL for the finance team."
+
+
+def _resume_profile(**overrides: Any) -> str:
+    payload: dict[str, Any] = {
+        "name": "Jordan Lee",
+        "skills": ["SQL"],
+        "target_roles": ["data analyst"],
+        "evidence": [{"quote": "Built Power BI dashboards in SQL"}],
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
+
+
+def test_resume_parse_accepts_valid_output_without_reprompting() -> None:
+    provider = FakeProvider([_resume_profile()])
+    graph = build_resume_parse_graph(provider)
+    result = graph.invoke({"resume_text": RESUME_TEXT})
+
+    assert result["status"] == "ready"
+    assert result["profile"]["skills"] == ["SQL"]
+    assert len(provider.calls) == 1
+
+
+def test_resume_parse_reprompts_on_malformed_output_then_routes_to_review() -> None:
+    """Resume parsing used to persist whatever json.loads accepted.
+
+    A reply that is valid JSON but the wrong shape was stored as a profile, so
+    the student saw a draft the model never really produced.
+    """
+
+    provider = FakeProvider(['{"skills": "SQL"}'])
+    graph = build_resume_parse_graph(provider)
+    result = graph.invoke({"resume_text": RESUME_TEXT})
+
+    assert result["status"] == "review"
+    assert "profile" not in result
+    assert len(provider.calls) == 2
+
+
+def test_resume_parse_refuses_an_empty_profile() -> None:
+    """A reply with no skills is not a parsed resume.
+
+    Caught against a real model: with ``skills`` defaulted it was optional in
+    the generated schema, so the model omitted it entirely and the empty result
+    validated as ``ready``. The student would have been shown a confirmation
+    screen with nothing on it.
+    """
+
+    provider = FakeProvider([json.dumps({"name": "Jordan Lee"})])
+    graph = build_resume_parse_graph(provider)
+    result = graph.invoke({"resume_text": RESUME_TEXT})
+
+    assert result["status"] == "review"
+    assert "profile" not in result
+
+
+def test_resume_schema_requires_skills_and_evidence_of_the_model() -> None:
+    """The contract has to be visible to the model, not just enforced after."""
+
+    required = json_schema(ResumeProfilePayload)["required"]
+    assert "skills" in required
+    assert "evidence" in required
+
+
+def test_resume_parse_rejects_a_quote_absent_from_the_resume() -> None:
+    """An invented credential is harder to spot than an invented job attribute."""
+
+    provider = FakeProvider(
+        [_resume_profile(evidence=[{"quote": "Led a team of forty engineers"}])]
+    )
+    graph = build_resume_parse_graph(provider)
+    result = graph.invoke({"resume_text": RESUME_TEXT})
+
+    assert result["status"] == "review"
+    assert "not found in the resume" in result["error"]
+    assert "profile" not in result
+
+
+def test_resume_parse_marks_an_outage_separately_from_a_bad_reply() -> None:
+    """A document the system never read is not a document a human should review."""
+
+    provider = UnavailableProvider()
+    graph = build_resume_parse_graph(provider)
+    result = graph.invoke({"resume_text": RESUME_TEXT})
+
+    assert result["status"] == graphs.STATUS_UNAVAILABLE
+    # Retried the call itself, but never re-prompted: the reply was never bad.
+    assert provider.calls_made == graphs.PROVIDER_MAX_ATTEMPTS
+
+
 def test_enrichment_quote_match_tolerates_whitespace_and_case() -> None:
     """Re-wrapped or re-cased text is the same evidence; only wording matters."""
 
@@ -497,11 +590,16 @@ def test_coach_stream_leaves_status_clean_on_a_complete_reply() -> None:
     assert status.truncated is False
 
 
-def test_coach_has_no_external_action_even_when_model_is_unavailable() -> None:
-    graph = build_career_coach_graph(DisabledModelProvider())
-    result = graph.invoke({"user_id": "1", "question": "Apply for me", "context": {}})
-    assert result["proposed_action"] is None
-    assert "temporarily unavailable" in result["response"]
+def test_coach_says_it_is_unavailable_rather_than_answering_from_nothing() -> None:
+    """A downed model must produce the notice, not an empty turn.
+
+    The student is waiting on a stream; yielding nothing would render as a
+    blank reply that looks like the coach ignored them.
+    """
+
+    provider = DisabledModelProvider()
+    reply = "".join(stream_coach_reply(provider, "Apply for me", {}))
+    assert "temporarily unavailable" in reply
 
 
 def test_coach_citations_keep_only_postings_that_were_supplied() -> None:
@@ -566,13 +664,26 @@ def test_future_source_contract_fixtures_normalize_provenance() -> None:
 
 
 def _provider_with_tags(
-    tags: dict[str, Any], *, chat_model: str = "gpt-oss:120b", **kwargs: Any
+    tags: dict[str, Any],
+    *,
+    chat_model: str = "gpt-oss:120b",
+    embedding_width: int | None = None,
+    **kwargs: Any,
 ) -> OllamaModelProvider:
-    """Build a provider whose HTTP calls are served by an in-memory transport."""
+    """Build a provider whose HTTP calls are served by an in-memory transport.
+
+    ``embedding_width`` defaults to the configured pgvector width so a healthy
+    provider stays healthy; pass a different value to simulate an embedding
+    model that disagrees with ``EMBEDDING_DIMENSION``.
+    """
+
+    width = embedding_dimension() if embedding_width is None else embedding_width
 
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/tags":
             return httpx.Response(200, json=tags)
+        if request.url.path == "/api/embed":
+            return httpx.Response(200, json={"embeddings": [[0.1] * width]})
         return httpx.Response(
             200, json={"message": {"content": request.content.decode()}}
         )
@@ -617,6 +728,52 @@ def test_health_is_available_when_both_models_are_installed() -> None:
     assert health.available is True
     assert health.model == "gpt-oss:120b"
     assert health.embedding_model == "embeddinggemma"
+
+
+def test_health_reports_unavailable_when_the_embedding_width_is_wrong() -> None:
+    """A pulled-but-wrong embedding model must not read as healthy.
+
+    EMBEDDING_DIMENSION and OLLAMA_EMBEDDING_MODEL are set independently, so
+    both can be individually plausible and still disagree. Without the probe
+    this deployment reported ready and silently stored no embeddings at all,
+    because every vector was discarded at write time.
+    """
+
+    provider = _provider_with_tags(
+        {"models": [{"name": "gpt-oss:120b"}, {"name": "embeddinggemma:latest"}]},
+        embedding_width=embedding_dimension() + 1,
+    )
+    health = provider.health()
+    assert health.available is False
+    assert str(embedding_dimension()) in (health.detail or "")
+
+
+def test_health_probes_the_embedding_model_only_once() -> None:
+    """The width is a property of the model, so repeated checks must not re-embed."""
+
+    calls: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(request.url.path)
+        if request.url.path == "/api/tags":
+            return httpx.Response(
+                200,
+                json={
+                    "models": [
+                        {"name": "gpt-oss:120b"},
+                        {"name": "embeddinggemma:latest"},
+                    ]
+                },
+            )
+        return httpx.Response(200, json={"embeddings": [[0.1] * embedding_dimension()]})
+
+    provider = OllamaModelProvider(
+        "http://ollama:11434", "gpt-oss:120b", "embeddinggemma"
+    )
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+    assert provider.health().available is True
+    assert provider.health().available is True
+    assert calls.count("/api/embed") == 1
 
 
 def test_chat_sends_the_configured_context_window_and_keep_alive() -> None:
@@ -784,6 +941,59 @@ def test_health_and_openapi_are_available_without_local_ai() -> None:
     schema = client.get("/api/openapi.json").json()
     assert "/api/v1/matches" in schema["paths"]
     assert "/internal/v1/webhooks/apify" in schema["paths"]
+
+
+def test_readiness_reports_the_interactive_model_separately() -> None:
+    """A typo in the coach's model must not hide behind a healthy batch model.
+
+    Checking only the batch provider left the whole coach path unmonitored,
+    which is the same "reports available while every call fails" failure the
+    per-model check was added to catch.
+    """
+
+    settings = PlatformSettings(
+        ollama_base_url="http://ollama:11434",
+        ollama_chat_model="gpt-oss:120b",
+        ollama_interactive_model="gpt-oss:20b-typo",
+    )
+    with _patched_settings(settings):
+        with patch.object(
+            OllamaModelProvider,
+            "health",
+            autospec=True,
+            side_effect=lambda self: ModelHealth(
+                self.chat_model == "gpt-oss:120b",
+                "ollama",
+                self.chat_model,
+                None if self.chat_model == "gpt-oss:120b" else "model not pulled",
+            ),
+        ):
+            payload = TestClient(app).get("/health/ready").json()
+
+    assert set(payload["workloads"]) == {WORKLOAD_BATCH, WORKLOAD_INTERACTIVE}
+    assert payload["workloads"][WORKLOAD_BATCH]["available"] is True
+    assert payload["workloads"][WORKLOAD_INTERACTIVE]["available"] is False
+    assert payload["degraded"] is True
+
+
+def test_readiness_does_not_double_check_a_single_model_deployment() -> None:
+    """Interactive resolves to the batch model, so there is nothing extra to probe."""
+
+    settings = PlatformSettings(
+        ollama_base_url="http://ollama:11434",
+        ollama_chat_model="gpt-oss:120b",
+    )
+    with _patched_settings(settings):
+        with patch.object(
+            OllamaModelProvider,
+            "health",
+            autospec=True,
+            side_effect=lambda self: ModelHealth(True, "ollama", self.chat_model),
+        ):
+            payload = TestClient(app).get("/health/ready").json()
+
+    assert set(payload["workloads"]) == {WORKLOAD_BATCH}
+    assert payload["degraded"] is False
 
 
 def test_internal_mutations_require_correlation_and_idempotency_headers() -> None:

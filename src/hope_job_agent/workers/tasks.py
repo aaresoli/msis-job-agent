@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import logging
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +21,7 @@ from pypdf import PdfReader
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from hope_job_agent.ai import graphs
 from hope_job_agent.ai.checkpoints import (
     delete_checkpoint_thread,
     postgres_checkpointer,
@@ -30,6 +30,7 @@ from hope_job_agent.ai.graphs import (
     build_job_enrichment_graph,
     build_market_pulse_graph,
     build_match_generation_graph,
+    build_resume_parse_graph,
 )
 from hope_job_agent.ai.provider import ModelUnavailable, get_model_provider
 from hope_job_agent.ai.ranking import normalize_rule_score
@@ -93,6 +94,23 @@ ORCHESTRATOR_SOURCE = "refresh_all"
 # that took it or by the worker dying, never by expiry mid-sweep.
 REFRESH_ALL_LOCK_TTL_SECONDS = 12600
 
+# Must exceed hope.market.refresh's own time limit so the TTL only releases the
+# lock for a worker that actually died, not one still working.
+MARKET_PULSE_LOCK_TTL_SECONDS = 900
+
+# A local model server restarts, reloads, or briefly saturates often enough that
+# a first failure is usually transient. Without a retry these tasks wait for the
+# nightly reconcile, so a model reload at 09:00 means no embeddings until 02:00.
+# ``ModelUnavailable`` is a ``RuntimeError``, so this covers both it and the
+# graph failures that surface the same way. Backoff is capped well under each
+# task's soft time limit so a retrying task cannot be killed mid-sleep.
+#
+# Deliberately not applied to the source refreshes: they set acks_late=False and
+# max_retries=0 because retrying a half-finished crawl re-hits rate-limited
+# employer boards.
+LLM_RETRY_EXCEPTIONS = (RuntimeError,)
+LLM_RETRY_BACKOFF_MAX_SECONDS = 60
+
 
 @lru_cache
 def session_factory() -> sessionmaker[Session]:
@@ -143,7 +161,7 @@ def _usable_vector(vector: list[float], label: str) -> bool:
         return True
     LOGGER.warning(
         "%s embedding has %d dimensions but EMBEDDING_DIMENSION is %d; "
-        "check OLLAMA_EMBEDDING_MODEL. Vector discarded.",
+        "check VLLM_EMBEDDING_MODEL. Vector discarded.",
         label,
         len(vector),
         expected,
@@ -153,8 +171,10 @@ def _usable_vector(vector: list[float], label: str) -> bool:
 
 @celery_app.task(
     name="hope.enrichment.job",
-    autoretry_for=(RuntimeError,),
+    autoretry_for=LLM_RETRY_EXCEPTIONS,
     retry_backoff=True,
+    retry_jitter=True,
+    retry_backoff_max=LLM_RETRY_BACKOFF_MAX_SECONDS,
     max_retries=3,
 )
 def enrich_job(job_id: str) -> dict[str, Any]:
@@ -209,7 +229,14 @@ def enrich_job(job_id: str) -> dict[str, Any]:
 EMBEDDING_BATCH_SIZE = 32
 
 
-@celery_app.task(name="hope.enrichment.embed")
+@celery_app.task(
+    name="hope.enrichment.embed",
+    autoretry_for=LLM_RETRY_EXCEPTIONS,
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_backoff_max=LLM_RETRY_BACKOFF_MAX_SECONDS,
+    max_retries=3,
+)
 def embed_jobs(job_ids: list[str]) -> dict[str, Any]:
     """Embed a batch of postings in as few provider calls as possible.
 
@@ -356,7 +383,14 @@ def _record_failed_source_run(source_name: str, error: str) -> None:
         LOGGER.exception("Could not record failed source run for %s", source_name)
 
 
-@celery_app.task(name="hope.enrichment.resume")
+@celery_app.task(
+    name="hope.enrichment.resume",
+    autoretry_for=LLM_RETRY_EXCEPTIONS,
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_backoff_max=LLM_RETRY_BACKOFF_MAX_SECONDS,
+    max_retries=3,
+)
 def parse_resume(resume_id: str) -> dict[str, Any]:
     with session_scope(session_factory()) as db:
         resume = db.get(ResumeDocument, UUID(resume_id))
@@ -373,38 +407,19 @@ def parse_resume(resume_id: str) -> dict[str, Any]:
             resume.parse_status = "review"
             resume.parsed_profile = {"warning": "No selectable resume text found"}
             return {"status": "review", "resume_id": resume_id}
-        try:
-            response = get_model_provider().chat(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Extract a proposed student profile using only resume "
-                            "evidence. Do not infer work authorization or private "
-                            "attributes. Return JSON."
-                        ),
-                    },
-                    {"role": "user", "content": text[:30000]},
-                ],
-                schema={
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "skills": {"type": "array", "items": {"type": "string"}},
-                        "target_roles": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                        "evidence": {"type": "array", "items": {"type": "string"}},
-                    },
-                    "required": ["skills", "target_roles", "evidence"],
-                },
-            )
-            resume.parsed_profile = json.loads(response)
-            resume.parse_status = "review"
-        except (ModelUnavailable, json.JSONDecodeError) as exc:
+        graph = build_resume_parse_graph(get_model_provider())
+        result = graph.invoke({"resume_text": text[:30000]})
+        if result.get("status") == graphs.STATUS_UNAVAILABLE:
             resume.parse_status = "awaiting_local_ai"
-            resume.parsed_profile = {"warning": str(exc)}
+            resume.parsed_profile = {"warning": result.get("error", "")}
+        elif result.get("status") == graphs.STATUS_READY:
+            # Still ``review``: a clean parse is a draft the student confirms,
+            # never a profile the platform asserts about them.
+            resume.parse_status = "review"
+            resume.parsed_profile = result["profile"]
+        else:
+            resume.parse_status = "review"
+            resume.parsed_profile = {"warning": result.get("error", "")}
         return {"status": resume.parse_status, "resume_id": resume_id}
 
 
@@ -673,8 +688,32 @@ def _finish_orchestrator_run(
         LOGGER.exception("refresh_all: could not close the parent source run")
 
 
-@celery_app.task(name="hope.market.refresh")
+@celery_app.task(
+    name="hope.market.refresh",
+    autoretry_for=LLM_RETRY_EXCEPTIONS,
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_backoff_max=LLM_RETRY_BACKOFF_MAX_SECONDS,
+    max_retries=3,
+)
 def refresh_market_pulse() -> dict[str, Any]:
+    """Re-extract market signals from the most recent posts.
+
+    Held under a single-flight lock. This is the one signal-writing path with
+    no natural dedup key: ``acks_late`` means a worker killed mid-run has its
+    message redelivered, and a second pass over the same posts inserts a second
+    set of ``MarketSignal`` rows that look identical to a reader.
+    """
+
+    try:
+        with single_flight("market-pulse", MARKET_PULSE_LOCK_TTL_SECONDS):
+            return _refresh_market_pulse_locked()
+    except AlreadyRunning:
+        LOGGER.warning("Market pulse already running; skipping this window")
+        return {"status": "skipped", "reason": "already running"}
+
+
+def _refresh_market_pulse_locked() -> dict[str, Any]:
     with session_scope(session_factory()) as db:
         posts = db.scalars(
             select(MarketPost)
@@ -729,7 +768,14 @@ def refresh_market_pulse() -> dict[str, Any]:
         return {"status": "ready" if created else "review", "signals": created}
 
 
-@celery_app.task(name="hope.matching.profile")
+@celery_app.task(
+    name="hope.matching.profile",
+    autoretry_for=LLM_RETRY_EXCEPTIONS,
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_backoff_max=LLM_RETRY_BACKOFF_MAX_SECONDS,
+    max_retries=3,
+)
 def generate_profile_matches(profile_id: str) -> dict[str, Any]:
     with session_scope(session_factory()) as db:
         profile = db.get(StudentProfileRecord, UUID(profile_id))

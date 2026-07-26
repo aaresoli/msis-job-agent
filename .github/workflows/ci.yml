@@ -86,6 +86,38 @@ jobs:
             --output "$RUNNER_TEMP/mvp_results.csv" \
             --limit 2 \
             --database-url "sqlite:///$RUNNER_TEMP/mvp.sqlite3"
+      # web/openapi.json is the contract the frontend types are generated from,
+      # and nothing regenerated it: it drifted a whole release behind the API,
+      # missing a new request field and an endpoint that had changed from POST
+      # to GET. Regenerating and diffing makes that a build failure instead of a
+      # runtime surprise.
+      - name: OpenAPI schema is current
+        run: |
+          uv run python scripts/export_openapi.py
+          git diff --exit-code web/openapi.json
+
+  # Nothing built either image, so a broken COPY or a bad base tag was only
+  # discovered on the deployment host. Build-only: running the stack needs
+  # secrets and a GPU, but a build failure is caught here.
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Application image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   frontend:
     runs-on: ubuntu-latest
@@ -106,6 +138,12 @@ jobs:
       - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
+      # Types are generated, not hand-written, so a stale api.d.ts type-checks
+      # cleanly against the wrong contract. Regenerate and diff.
+      - name: Generated API types are current
+        run: |
+          npm run generate:api
+          git diff --exit-code lib/generated/api.d.ts
       - run: npm test
       - run: npm run build
         env:

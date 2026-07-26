@@ -59,6 +59,10 @@ packages = ["src/hope_job_agent"]
 
 [tool.black]
 line-length = 88
+# Deliberately one release behind `requires-python`. Targeting py314 lets black
+# emit PEP 758 unparenthesized `except A, B:`, which rewrites exception handling
+# across the codebase for no functional gain. Formatting conservatively costs
+# nothing; the runtime floor is still 3.14.
 target-version = ["py313"]
 
 [tool.ruff]

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Any, TypedDict
 
@@ -30,9 +30,11 @@ from pydantic import BaseModel, ValidationError
 from hope_job_agent.ai.provider import ModelProvider, ModelUnavailable
 from hope_job_agent.ai.ranking import compose_hybrid_score
 from hope_job_agent.ai.schemas import (
+    EvidenceItem,
     JobEnrichmentPayload,
     MarketSignalsPayload,
     MatchScorePayload,
+    ResumeProfilePayload,
     json_schema,
 )
 
@@ -47,6 +49,10 @@ PROVIDER_RETRY_BACKOFF_SECONDS = 0.25
 
 STATUS_READY = "ready"
 STATUS_REVIEW = "review"
+# Distinct from ``review``: nothing is wrong with the input, the model simply
+# was not reachable. Resume parsing retries these rather than asking a human to
+# look at a document the system never actually read.
+STATUS_UNAVAILABLE = "awaiting_local_ai"
 
 
 class JobEnrichmentState(TypedDict, total=False):
@@ -77,13 +83,13 @@ class MatchState(TypedDict, total=False):
     degraded: bool
 
 
-class CoachState(TypedDict, total=False):
-    user_id: str
-    question: str
-    context: dict[str, Any]
-    response: str
-    citations: list[dict[str, str]]
-    proposed_action: dict[str, Any] | None
+class ResumeParseState(TypedDict, total=False):
+    resume_text: str
+    profile: dict[str, Any]
+    status: str
+    error: str
+    raw_output: str
+    attempts: int
 
 
 class MarketPulseState(TypedDict, total=False):
@@ -149,29 +155,43 @@ def _normalize_for_quote_match(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
+def _quotes_absent_from(source_text: str, items: Iterable[EvidenceItem]) -> list[str]:
+    """Return every quote in ``items`` that does not appear in ``source_text``.
+
+    The schema can only require that a quote is non-empty; it never sees the
+    source. Without this check "verbatim" is a request in the system prompt
+    rather than a guarantee, and a fabricated quote validates cleanly.
+    """
+
+    haystack = _normalize_for_quote_match(source_text)
+    return [
+        item.quote
+        for item in items
+        if _normalize_for_quote_match(item.quote) not in haystack
+    ]
+
+
 def _unsupported_quotes(
     payload: JobEnrichmentPayload, description: str, title: str
 ) -> list[str]:
     """Return every evidence quote absent from the posting text.
 
-    The schema can only require that a quote is non-empty; it never sees the
-    posting. Without this check "verbatim" is a request in the system prompt
-    rather than a guarantee, and a fabricated sponsorship quote validates
-    cleanly. Sponsorship, salary, and location are exactly the claims the
-    project promises are traceable, so an unsupported quote fails the payload.
+    Sponsorship, salary, and location are exactly the claims the project
+    promises are traceable, so an unsupported quote fails the payload.
     """
 
-    haystack = _normalize_for_quote_match(f"{title}\n{description}")
-    return [
-        item.quote
-        for group in (
-            payload.work_auth_evidence,
-            payload.salary_evidence,
-            payload.location_evidence,
-        )
-        for item in group
-        if _normalize_for_quote_match(item.quote) not in haystack
-    ]
+    return _quotes_absent_from(
+        f"{title}\n{description}",
+        [
+            item
+            for group in (
+                payload.work_auth_evidence,
+                payload.salary_evidence,
+                payload.location_evidence,
+            )
+            for item in group
+        ],
+    )
 
 
 def _exhausted(state: JobEnrichmentState | MarketPulseState) -> bool:
@@ -255,6 +275,96 @@ def build_job_enrichment_graph(
     graph.add_edge("extract_evidence", "validate_evidence")
     graph.add_conditional_edges(
         "validate_evidence", route, {"retry": "extract_evidence", "done": END}
+    )
+    return graph.compile(checkpointer=checkpointer)
+
+
+RESUME_SYSTEM_PROMPT = (
+    "Extract a proposed student profile using only resume evidence. "
+    "Do not infer work authorization, citizenship, age, or any other private "
+    "attribute, even if the resume hints at it. Every evidence entry must "
+    "include a 'quote' field copied verbatim from the resume. "
+    "Return JSON matching the schema."
+)
+
+
+def build_resume_parse_graph(
+    provider: ModelProvider,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> CompiledStateGraph[Any, Any, Any]:
+    """Extract a draft profile from resume text under the usual validate loop.
+
+    This path used to hand-roll its own JSON Schema and accept whatever
+    ``json.loads`` returned, so a reply that parsed as JSON was persisted even
+    if it had no skills, invented quotes, or the wrong shape entirely. It now
+    shares the contract-and-correction cycle every other extraction uses.
+    """
+
+    schema = json_schema(ResumeProfilePayload)
+
+    def generate(state: ResumeParseState) -> ResumeParseState:
+        messages: list[dict[str, str]] = [
+            {"role": "system", "content": RESUME_SYSTEM_PROMPT},
+            {"role": "user", "content": state.get("resume_text", "")},
+        ]
+        if state.get("error") and state.get("raw_output"):
+            messages.append(_correction_message(state["raw_output"], state["error"]))
+        try:
+            content = _chat_with_retry(provider, messages, schema=schema)
+        except ModelUnavailable as exc:
+            return {
+                **state,
+                "status": STATUS_UNAVAILABLE,
+                "error": str(exc),
+                "raw_output": "",
+                "attempts": MAX_GENERATION_ATTEMPTS,
+            }
+        return {
+            **state,
+            "raw_output": content,
+            "attempts": int(state.get("attempts", 0)) + 1,
+        }
+
+    def validate(state: ResumeParseState) -> ResumeParseState:
+        if state.get("status") == STATUS_UNAVAILABLE:
+            return state
+        try:
+            payload = _parse(state.get("raw_output", ""), ResumeProfilePayload)
+        except (ValidationError, ValueError) as exc:
+            return {**state, "status": STATUS_REVIEW, "error": str(exc)}
+        unsupported = _quotes_absent_from(
+            state.get("resume_text", ""), payload.evidence
+        )
+        if unsupported:
+            return {
+                **state,
+                "status": STATUS_REVIEW,
+                "error": (
+                    "evidence quote not found in the resume: "
+                    + "; ".join(repr(quote) for quote in unsupported[:3])
+                ),
+            }
+        return {
+            **state,
+            "profile": payload.model_dump(mode="json"),
+            "status": STATUS_READY,
+            "error": "",
+        }
+
+    def route(state: ResumeParseState) -> str:
+        if state.get("status") in (STATUS_READY, STATUS_UNAVAILABLE):
+            return "done"
+        if int(state.get("attempts", 0)) >= MAX_GENERATION_ATTEMPTS:
+            return "done"
+        return "retry"
+
+    graph = StateGraph(ResumeParseState)
+    graph.add_node("extract_profile", generate)
+    graph.add_node("validate_profile", validate)
+    graph.add_edge(START, "extract_profile")
+    graph.add_edge("extract_profile", "validate_profile")
+    graph.add_conditional_edges(
+        "validate_profile", route, {"retry": "extract_profile", "done": END}
     )
     return graph.compile(checkpointer=checkpointer)
 
@@ -418,27 +528,6 @@ def stream_coach_reply(
         return
     if not produced:
         yield COACH_UNAVAILABLE
-
-
-def build_career_coach_graph(
-    provider: ModelProvider,
-    checkpointer: BaseCheckpointSaver[Any] | None = None,
-) -> CompiledStateGraph[Any, Any, Any]:
-    def answer(state: CoachState) -> CoachState:
-        try:
-            response = provider.chat(
-                coach_messages(state["question"], state.get("context", {})),
-                temperature=0.2,
-            )
-        except ModelUnavailable:
-            response = COACH_UNAVAILABLE
-        return {**state, "response": response, "proposed_action": None}
-
-    graph = StateGraph(CoachState)
-    graph.add_node("advisory_answer", answer)
-    graph.add_edge(START, "advisory_answer")
-    graph.add_edge("advisory_answer", END)
-    return graph.compile(checkpointer=checkpointer)
 
 
 def build_market_pulse_graph(

@@ -13,10 +13,14 @@ import os
 import shutil
 import subprocess
 import tarfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import pytest
+from sqlalchemy import text
 
 from hope_job_agent.ops import backup
 
@@ -154,6 +158,67 @@ def _client_matches_server() -> bool:
     return "18." in output
 
 
+BACKUP_TEST_MARKER = "pytest-backup-"
+
+
+@contextmanager
+def _seeded_verify_tables(url: Any) -> Iterator[None]:
+    """Guarantee one row in each table ``verify_restore`` counts.
+
+    Rows are namespaced by :data:`BACKUP_TEST_MARKER` and removed afterwards so
+    the suite leaves the database as it found it.
+    """
+
+    import uuid
+
+    from hope_job_agent.db.models import JobPostingRecord
+    from hope_job_agent.db.platform_models import User
+    from hope_job_agent.db.session import (
+        create_db_engine,
+        create_session_factory,
+        session_scope,
+    )
+
+    suffix = uuid.uuid4().hex[:8]
+    engine = create_db_engine(
+        url.render_as_string(hide_password=False), storage="postgres"
+    )
+    factory = create_session_factory(engine)
+    try:
+        with session_scope(factory) as db:
+            db.add(
+                User(
+                    email=f"{BACKUP_TEST_MARKER}{suffix}@example.edu",
+                    role="student",
+                    status="active",
+                )
+            )
+            db.add(
+                JobPostingRecord(
+                    source=f"{BACKUP_TEST_MARKER}{suffix}",
+                    company_name="Backup Fixture Co",
+                    normalized_company_name="backup fixture co",
+                    title="Backup Fixture Analyst",
+                    normalized_title="backup fixture analyst",
+                )
+            )
+        yield
+    finally:
+        try:
+            with session_scope(factory) as db:
+                db.execute(
+                    text("DELETE FROM job_postings WHERE source LIKE :p"),
+                    {"p": f"{BACKUP_TEST_MARKER}%"},
+                )
+                db.execute(
+                    text("DELETE FROM users WHERE email LIKE :p"),
+                    {"p": f"{BACKUP_TEST_MARKER}%"},
+                )
+        except Exception:  # noqa: BLE001 - cleanup must not mask test outcomes
+            pass
+        engine.dispose()
+
+
 @pytest.mark.postgres
 @pytest.mark.skipif(
     not _client_matches_server(),
@@ -164,6 +229,11 @@ def test_dump_restore_and_verify_round_trip(tmp_path: Path) -> None:
 
     This is the assertion the retired n8n workflow claimed to make: it POSTed to
     an endpoint that returned "recorded" without anything ever being dumped.
+
+    Seeds its own rows in every verified table. ``verify_restore`` requires a
+    non-zero count -- an empty restore proves nothing -- so borrowing whatever
+    another test happened to leave behind made this pass or fail on collection
+    order alone, and it fails against a freshly migrated database.
     """
 
     from sqlalchemy.engine import make_url
@@ -173,10 +243,11 @@ def test_dump_restore_and_verify_round_trip(tmp_path: Path) -> None:
     url = make_url(os.getenv("DATABASE_URL", "").strip() or build_postgres_url())
     dump_path = tmp_path / "hope_jobs.dump"
 
-    backup._pg_dump(url, dump_path)
-    assert dump_path.stat().st_size > 0
+    with _seeded_verify_tables(url):
+        backup._pg_dump(url, dump_path)
+        assert dump_path.stat().st_size > 0
 
-    counts = backup.verify_restore(url, dump_path)
+        counts = backup.verify_restore(url, dump_path)
 
     assert set(counts) == set(backup.VERIFY_TABLES)
     assert all(value > 0 for value in counts.values())

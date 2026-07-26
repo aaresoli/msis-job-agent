@@ -17,7 +17,6 @@ class SecretSettings(BaseModel):
     """Secret-bearing settings grouped for dependency injection."""
 
     database_url: SecretStr = SecretStr("")
-    openai_api_key: SecretStr = SecretStr("")
     email_api_key: SecretStr = SecretStr("")
 
 
@@ -30,7 +29,6 @@ class Settings(BaseSettings):
     """
 
     database_url: SecretStr = SecretStr("")
-    openai_api_key: SecretStr = SecretStr("")
     email_api_key: SecretStr = SecretStr("")
     approved_jobs_path: Path = Path("docs/examples/approved_jobs.sample.json")
     ksbit_export_path: Path = Path("data/sample_ksbit_jobs.json")
@@ -58,7 +56,6 @@ class Settings(BaseSettings):
 
         return SecretSettings(
             database_url=self.database_url,
-            openai_api_key=self.openai_api_key,
             email_api_key=self.email_api_key,
         )
 

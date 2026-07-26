@@ -133,6 +133,48 @@ def test_an_unknown_event_type_is_left_for_a_later_release(factory) -> None:
         assert result["failed"] == 1
 
 
+def test_inline_dispatched_events_publish_without_dispatching_again(
+    factory, monkeypatch
+) -> None:
+    """The no-op handlers must stay no-ops.
+
+    ``profile.updated``, ``resume.uploaded``, and ``job.upserted`` have their
+    follow-up work dispatched inline by the request that wrote them. Adding a
+    dispatch here would double every enrichment and match run, and until now
+    the only thing preventing that was a comment. This pins the invariant so
+    the regression fails in CI instead of in production.
+    """
+
+    from hope_job_agent.workers import tasks as worker_tasks
+
+    dispatched: list[str] = []
+    for task in (
+        worker_tasks.generate_profile_matches,
+        worker_tasks.parse_resume,
+        worker_tasks.enrich_job,
+    ):
+        monkeypatch.setattr(
+            task,
+            "delay",
+            lambda *a, _name=task.name, **k: dispatched.append(_name),
+        )
+
+    with session_scope(factory) as db:
+        for event_type in (
+            "profile.updated.v1",
+            "resume.uploaded.v1",
+            "job.upserted.v1",
+        ):
+            db.add(_event(event_type))
+        db.flush()
+
+        result = outbox.relay_pending(db, batch_size=10)
+
+    assert result["published"] == 3
+    assert result["failed"] == 0
+    assert dispatched == []
+
+
 def test_concurrent_relays_do_not_claim_the_same_event(factory) -> None:
     """SKIP LOCKED is what makes a second relay safe to run."""
 

@@ -1,14 +1,12 @@
 """Per-call metrics for local inference.
 
-Ollama returns the numbers that decide whether the Spark is being used well --
-``prompt_eval_count``, ``eval_count``, ``eval_duration``, ``load_duration`` --
-on every non-streaming reply. The provider used to read ``message.content`` and
-drop the rest, so there was no way to tell a saturated GPU from an idle one, or
-a warm queue from one silently reloading a 65GB model between tasks.
+vLLM (OpenAI-compatible) returns ``usage.prompt_tokens`` /
+``usage.completion_tokens``. The counters stay provider-agnostic so Prometheus
+dashboards do not care which engine produced them.
 
 Counters rather than gauges: workers are forked processes that come and go, and
 a rate over a counter survives that. Throughput is derived at query time as
-``generated_tokens_total / eval_seconds_total``.
+``generated_tokens_total / eval_seconds_total`` when eval time is present.
 """
 
 from __future__ import annotations
@@ -19,9 +17,6 @@ from typing import Any
 from prometheus_client import Counter
 
 LOGGER = logging.getLogger(__name__)
-
-# Ollama reports durations in nanoseconds.
-_NANOSECONDS = 1_000_000_000.0
 
 _LABELS = ("model", "workload", "operation")
 
@@ -42,16 +37,33 @@ GENERATED_TOKENS = Counter(
 )
 EVAL_SECONDS = Counter(
     "hope_llm_eval_seconds_total",
-    "Wall-clock seconds spent in decode. Divide generated tokens by this "
-    "for sustained tok/s.",
+    "Wall-clock seconds spent in decode when the engine reports it. "
+    "Divide generated tokens by this for sustained tok/s.",
     _LABELS,
 )
 LOAD_SECONDS = Counter(
     "hope_llm_load_seconds_total",
-    "Wall-clock seconds spent loading model weights. Sustained non-zero "
-    "growth means models are being evicted -- check OLLAMA_MAX_LOADED_MODELS.",
+    "Wall-clock seconds spent loading model weights when reported. "
+    "Sustained non-zero growth means the engine is reloading between calls.",
     _LABELS,
 )
+
+
+def _usage_tokens(payload: dict[str, Any]) -> tuple[int, int]:
+    """Read prompt/completion counts from OpenAI-style or legacy bodies."""
+
+    usage = payload.get("usage")
+    if isinstance(usage, dict):
+        prompt = int(usage.get("prompt_tokens") or 0)
+        completion = usage.get("completion_tokens")
+        if completion is None and usage.get("total_tokens") is not None:
+            completion = int(usage["total_tokens"]) - prompt
+        return prompt, int(completion or 0)
+    # Legacy field names, kept so older fixtures still record cleanly.
+    return (
+        int(payload.get("prompt_eval_count") or 0),
+        int(payload.get("eval_count") or 0),
+    )
 
 
 def record_call(
@@ -61,7 +73,7 @@ def record_call(
     workload: str,
     operation: str,
 ) -> None:
-    """Record one completed call from a raw Ollama response body.
+    """Record one completed call from a raw engine response body.
 
     Never raises: telemetry must not be able to fail a student's request. A
     reply missing the counters (a mocked transport, or a future server version)
@@ -71,13 +83,15 @@ def record_call(
     labels = (model, workload, operation)
     try:
         REQUESTS.labels(*labels, "ok").inc()
-        prompt_tokens = int(payload.get("prompt_eval_count") or 0)
-        generated_tokens = int(payload.get("eval_count") or 0)
-        eval_seconds = float(payload.get("eval_duration") or 0) / _NANOSECONDS
-        load_seconds = float(payload.get("load_duration") or 0) / _NANOSECONDS
+        prompt_tokens, generated_tokens = _usage_tokens(payload)
+        # OpenAI bodies do not report decode wall time; leave eval at 0 unless
+        # a legacy engine included it.
+        nano = 1_000_000_000.0
+        eval_seconds = float(payload.get("eval_duration") or 0) / nano
+        load_seconds = float(payload.get("load_duration") or 0) / nano
 
         PROMPT_TOKENS.labels(*labels).inc(prompt_tokens)
-        GENERATED_TOKENS.labels(*labels).inc(generated_tokens)
+        GENERATED_TOKENS.labels(*labels).inc(max(0, generated_tokens))
         EVAL_SECONDS.labels(*labels).inc(eval_seconds)
         LOAD_SECONDS.labels(*labels).inc(load_seconds)
 
@@ -88,8 +102,12 @@ def record_call(
             workload,
             operation,
             prompt_tokens,
-            generated_tokens,
-            generated_tokens / eval_seconds if eval_seconds > 0 else 0.0,
+            max(0, generated_tokens),
+            (
+                max(0, generated_tokens) / eval_seconds
+                if eval_seconds > 0
+                else 0.0
+            ),
             load_seconds,
         )
     except (TypeError, ValueError):
@@ -103,3 +121,4 @@ def record_failure(*, model: str, workload: str, operation: str) -> None:
         REQUESTS.labels(model, workload, operation, "error").inc()
     except ValueError:  # pragma: no cover - label cardinality is fixed above
         LOGGER.debug("Could not record inference failure", exc_info=True)
+

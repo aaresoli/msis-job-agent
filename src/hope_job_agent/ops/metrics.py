@@ -107,10 +107,9 @@ def gauges() -> _Gauges:
             multiprocess_mode=_MODE,
         ),
         model_loaded=Gauge(
-            "hope_ollama_model_loaded",
-            "1 for each model currently resident in Ollama. A model that drops "
-            "out between batches is being evicted -- check "
-            "OLLAMA_MAX_LOADED_MODELS.",
+            "hope_vllm_model_loaded",
+            "1 when the chat server lists the labelled model on /v1/models. "
+            "A flip to 0 means the engine restarted or the model was unloaded.",
             ("model",),
             multiprocess_mode=_MODE,
         ),
@@ -235,26 +234,29 @@ def _sample_queue_depth() -> dict[str, int]:
 
 
 def _sample_loaded_models() -> list[str]:
-    """Report which models Ollama currently holds in memory.
+    """Report which models the vLLM chat server currently advertises.
 
-    Residency is what ``OLLAMA_KEEP_ALIVE`` and ``OLLAMA_MAX_LOADED_MODELS`` are
-    tuned for, and a 65GB model reloading between batches costs minutes of GPU
-    time. ``hope_llm_load_seconds_total`` shows that after the fact; this shows
-    it as it happens.
+    vLLM keeps weights resident for the life of the process, so this is really
+    an liveness/identity check: a flip to 0 means the engine restarted or the
+    configured model id disappeared from ``/v1/models``.
     """
 
-    base_url = get_platform_settings().ollama_base_url.rstrip("/")
+    base_url = get_platform_settings().vllm_base_url.rstrip("/")
     if not base_url:
         return []
     try:
-        response = httpx.get(f"{base_url}/api/ps", timeout=5.0)
+        response = httpx.get(f"{base_url}/v1/models", timeout=5.0)
         response.raise_for_status()
-        models = [str(item["model"]) for item in response.json().get("models", [])]
+        models = [
+            str(item["id"])
+            for item in response.json().get("data", [])
+            if isinstance(item, dict) and item.get("id")
+        ]
     except (httpx.HTTPError, KeyError, ValueError) as exc:
-        LOGGER.warning("Ollama residency sample failed: %s", exc)
+        LOGGER.warning("vLLM model sample failed: %s", exc)
         return []
-    # Previously-resident models must go to 0 rather than keep their last value,
-    # otherwise an eviction looks identical to a model that is still loaded.
+    # Previously-seen models must go to 0 rather than keep their last value,
+    # otherwise an unload looks identical to a model that is still served.
     for model in _SEEN_MODELS - set(models):
         gauges().model_loaded.labels(model=model).set(0)
     for model in models:

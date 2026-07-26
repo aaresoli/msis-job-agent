@@ -1550,6 +1550,19 @@
             ],
             "title": "Limit"
           },
+          "max_companies": {
+            "anyOf": [
+              {
+                "maximum": 10000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Companies"
+          },
           "since": {
             "anyOf": [
               {
@@ -4799,6 +4812,7 @@
     },
     "/health/ready": {
       "get": {
+        "description": "Report the health of every model workload the platform actually uses.\n\nChecking only the batch provider left the coach uncovered: a typo in\n``OLLAMA_INTERACTIVE_MODEL`` reported available while every coach\nrequest failed, which is the same failure the per-model check exists to\ncatch. The interactive check is skipped when it resolves to the batch\nmodel, so the common single-model deployment still costs one round trip.",
         "operationId": "readiness_health_ready_get",
         "responses": {
           "200": {
@@ -4896,26 +4910,11 @@
         ]
       }
     },
-    "/internal/v1/backup/verified": {
+    "/internal/v1/backup": {
       "post": {
-        "operationId": "backup_verified_internal_v1_backup_verified_post",
+        "description": "Run a backup now. The task's single-flight lock rejects an overlap.",
+        "operationId": "trigger_backup_internal_v1_backup_post",
         "parameters": [
-          {
-            "in": "header",
-            "name": "X-Request-ID",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "X-Request-Id"
-            }
-          },
           {
             "in": "header",
             "name": "authorization",
@@ -4947,6 +4946,22 @@
               ],
               "title": "Idempotency-Key"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
           }
         ],
         "responses": {
@@ -4955,7 +4970,91 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Backup Verified Internal V1 Backup Verified Post",
+                  "title": "Response Trigger Backup Internal V1 Backup Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Trigger Backup",
+        "tags": [
+          "internal"
+        ]
+      }
+    },
+    "/internal/v1/backup/verified": {
+      "get": {
+        "description": "Report the most recent backup, from the record the backup task wrote.\n\nThis used to be a POST that returned ``{\"status\": \"recorded\"}`` whatever the\nstate of the world -- called nightly by a workflow that was never activated,\nagainst a system that had never taken a backup. Reading the row means the\nanswer can be \"none\", which is the answer that matters.",
+        "operationId": "backup_verified_internal_v1_backup_verified_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Request-ID",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Backup Verified Internal V1 Backup Verified Get",
                   "type": "object"
                 }
               }
@@ -5167,6 +5266,7 @@
     },
     "/internal/v1/digests/{cadence}": {
       "post": {
+        "description": "Manually queue a digest cadence the scheduler otherwise runs on its own.",
         "operationId": "request_digests_internal_v1_digests__cadence__post",
         "parameters": [
           {
@@ -5259,6 +5359,7 @@
     },
     "/internal/v1/reconciliation": {
       "post": {
+        "description": "Manually trigger the reconciliation the scheduler runs nightly.",
         "operationId": "reconcile_missing_work_internal_v1_reconciliation_post",
         "parameters": [
           {
@@ -5342,7 +5443,7 @@
     },
     "/internal/v1/reminders/applications": {
       "post": {
-        "operationId": "create_application_reminders_internal_v1_reminders_applications_post",
+        "operationId": "request_application_reminders_internal_v1_reminders_applications_post",
         "parameters": [
           {
             "in": "header",
@@ -5399,7 +5500,7 @@
               "application/json": {
                 "schema": {
                   "additionalProperties": true,
-                  "title": "Response Create Application Reminders Internal V1 Reminders Applications Post",
+                  "title": "Response Request Application Reminders Internal V1 Reminders Applications Post",
                   "type": "object"
                 }
               }
@@ -5417,7 +5518,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Create Application Reminders",
+        "summary": "Request Application Reminders",
         "tags": [
           "internal"
         ]

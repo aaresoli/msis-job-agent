@@ -650,7 +650,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Readiness */
+        /**
+         * Readiness
+         * @description Report the health of every model workload the platform actually uses.
+         *
+         *     Checking only the batch provider left the coach uncovered: a typo in
+         *     ``OLLAMA_INTERACTIVE_MODEL`` reported available while every coach
+         *     request failed, which is the same failure the per-model check exists to
+         *     catch. The interactive check is skipped when it resolves to the batch
+         *     model, so the common single-model deployment still costs one round trip.
+         */
         get: operations["readiness_health_ready_get"];
         put?: never;
         post?: never;
@@ -677,7 +686,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/internal/v1/backup/verified": {
+    "/internal/v1/backup": {
         parameters: {
             query?: never;
             header?: never;
@@ -686,8 +695,36 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Backup Verified */
-        post: operations["backup_verified_internal_v1_backup_verified_post"];
+        /**
+         * Trigger Backup
+         * @description Run a backup now. The task's single-flight lock rejects an overlap.
+         */
+        post: operations["trigger_backup_internal_v1_backup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/v1/backup/verified": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Backup Verified
+         * @description Report the most recent backup, from the record the backup task wrote.
+         *
+         *     This used to be a POST that returned ``{"status": "recorded"}`` whatever the
+         *     state of the world -- called nightly by a workflow that was never activated,
+         *     against a system that had never taken a backup. Reading the row means the
+         *     answer can be "none", which is the answer that matters.
+         */
+        get: operations["backup_verified_internal_v1_backup_verified_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -737,7 +774,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Request Digests */
+        /**
+         * Request Digests
+         * @description Manually queue a digest cadence the scheduler otherwise runs on its own.
+         */
         post: operations["request_digests_internal_v1_digests__cadence__post"];
         delete?: never;
         options?: never;
@@ -754,7 +794,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reconcile Missing Work */
+        /**
+         * Reconcile Missing Work
+         * @description Manually trigger the reconciliation the scheduler runs nightly.
+         */
         post: operations["reconcile_missing_work_internal_v1_reconciliation_post"];
         delete?: never;
         options?: never;
@@ -771,8 +814,8 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Application Reminders */
-        post: operations["create_application_reminders_internal_v1_reminders_applications_post"];
+        /** Request Application Reminders */
+        post: operations["request_application_reminders_internal_v1_reminders_applications_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1357,6 +1400,8 @@ export interface components {
             dry_run: boolean;
             /** Limit */
             limit?: number | null;
+            /** Max Companies */
+            max_companies?: number | null;
             /** Since */
             since?: string | null;
         };
@@ -3006,13 +3051,48 @@ export interface operations {
             };
         };
     };
-    backup_verified_internal_v1_backup_verified_post: {
+    trigger_backup_internal_v1_backup_post: {
         parameters: {
             query?: never;
             header?: {
-                "X-Request-ID"?: string | null;
                 authorization?: string | null;
                 "Idempotency-Key"?: string | null;
+                "X-Request-ID"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    backup_verified_internal_v1_backup_verified_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+                "Idempotency-Key"?: string | null;
+                "X-Request-ID"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -3191,7 +3271,7 @@ export interface operations {
             };
         };
     };
-    create_application_reminders_internal_v1_reminders_applications_post: {
+    request_application_reminders_internal_v1_reminders_applications_post: {
         parameters: {
             query?: never;
             header?: {

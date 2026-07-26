@@ -39,13 +39,13 @@ def test_source_config_default_and_env_override(monkeypatch, tmp_path):
 
 
 def test_secret_config_masks_plain_text_values(monkeypatch):
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-secret")
+    monkeypatch.setenv("EMAIL_API_KEY", "key-test-secret")
     monkeypatch.setenv("DATABASE_URL", "postgresql://user:password@example/db")
 
     settings = get_settings()
 
-    assert settings.openai_api_key.get_secret_value() == "sk-test-secret"
-    assert "sk-test-secret" not in repr(settings)
-    assert "sk-test-secret" not in repr(settings.secrets)
+    assert settings.email_api_key.get_secret_value() == "key-test-secret"
+    assert "key-test-secret" not in repr(settings)
+    assert "key-test-secret" not in repr(settings.secrets)
     assert "password" not in repr(settings)
     assert "password" not in repr(settings.secrets)

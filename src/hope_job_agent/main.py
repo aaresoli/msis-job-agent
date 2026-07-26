@@ -11,7 +11,11 @@ from fastapi.responses import JSONResponse, Response
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from hope_job_agent import __version__
-from hope_job_agent.ai.provider import get_model_provider
+from hope_job_agent.ai.provider import (
+    WORKLOAD_BATCH,
+    WORKLOAD_INTERACTIVE,
+    get_model_provider,
+)
 from hope_job_agent.api import (
     applications,
     auth,
@@ -87,17 +91,38 @@ def create_app() -> FastAPI:
 
     @application.get("/health/ready")
     def readiness() -> JSONResponse:
-        model = get_model_provider().health()
+        """Report the health of every model workload the platform actually uses.
+
+        Checking only the batch provider left the coach uncovered: a typo in
+        ``VLLM_INTERACTIVE_MODEL`` reported available while every coach
+        request failed, which is the same failure the per-model check exists to
+        catch. The interactive check is skipped when it resolves to the batch
+        model, so the common single-model deployment still costs one round trip.
+        """
+
+        batch = get_model_provider(WORKLOAD_BATCH).health()
+        interactive = get_model_provider(WORKLOAD_INTERACTIVE).health()
+        workloads = {WORKLOAD_BATCH: batch}
+        if interactive.model != batch.model:
+            workloads[WORKLOAD_INTERACTIVE] = interactive
         payload = {
             "status": "ready",
             "model": {
-                "available": model.available,
-                "provider": model.provider,
-                "model": model.model,
-                "embedding_model": model.embedding_model,
-                "detail": model.detail,
+                "available": batch.available,
+                "provider": batch.provider,
+                "model": batch.model,
+                "embedding_model": batch.embedding_model,
+                "detail": batch.detail,
             },
-            "degraded": not model.available,
+            "workloads": {
+                workload: {
+                    "available": health.available,
+                    "model": health.model,
+                    "detail": health.detail,
+                }
+                for workload, health in workloads.items()
+            },
+            "degraded": any(not health.available for health in workloads.values()),
         }
         return JSONResponse(payload, status_code=200)
 

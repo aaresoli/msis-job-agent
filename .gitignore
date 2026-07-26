@@ -59,3 +59,7 @@ logs/
 # services (a local SMTP catcher, for example) here so the committed compose
 # file keeps publishing nothing by default.
 docker-compose.override.yml
+
+# Per-developer agent tooling state. Committed once by accident; the skills it
+# stored referenced throwaway root-level fetch scripts that no longer exist.
+.qwen/

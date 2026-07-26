@@ -7,26 +7,30 @@ x-app-environment: &app-environment
   MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-hope_minio}
   MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-development-only-change-me}
   MINIO_BUCKET: hope-private-documents
-  OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-  OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-}
-  OLLAMA_INTERACTIVE_MODEL: ${OLLAMA_INTERACTIVE_MODEL:-}
-  OLLAMA_EMBEDDING_MODEL: embeddinggemma
-  OLLAMA_NUM_CTX: ${OLLAMA_NUM_CTX:-16384}
-  OLLAMA_INTERACTIVE_NUM_CTX: ${OLLAMA_INTERACTIVE_NUM_CTX:-8192}
+  VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000}
+  VLLM_CHAT_MODEL: ${VLLM_CHAT_MODEL:-}
+  VLLM_INTERACTIVE_MODEL: ${VLLM_INTERACTIVE_MODEL:-}
+  VLLM_EMBEDDING_BASE_URL: ${VLLM_EMBEDDING_BASE_URL:-http://embed:8002}
+  # 768-d public model. embeddinggemma is gated on Hugging Face and needs a
+  # token; bge-base keeps the pgvector width without one. Re-embed after a
+  # switch from embeddinggemma — the spaces are not interchangeable.
+  VLLM_EMBEDDING_MODEL: ${VLLM_EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
+  VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-16384}
+  VLLM_MAX_TOKENS: ${VLLM_MAX_TOKENS:-2048}
+  VLLM_INTERACTIVE_MAX_TOKENS: ${VLLM_INTERACTIVE_MAX_TOKENS:-1024}
   # Empty on purpose for the batch queue: "low" nearly doubles enrichment
   # throughput and costs three postings in forty to the review queue. See the
   # measured table in docs/dgx_spark_deployment.md before changing it.
   # `-` rather than `:-` so an explicitly empty value is honoured rather than
   # being treated as unset.
-  OLLAMA_BATCH_REASONING: ${OLLAMA_BATCH_REASONING-}
-  OLLAMA_INTERACTIVE_REASONING: ${OLLAMA_INTERACTIVE_REASONING-medium}
-  # Must equal OLLAMA_NUM_PARALLEL on the ollama service below. The workers
-  # size their fan-out from it.
-  OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-4}
-  OLLAMA_TIMEOUT_SECONDS: ${OLLAMA_TIMEOUT_SECONDS:-300}
-  OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-2h}
+  VLLM_BATCH_REASONING: ${VLLM_BATCH_REASONING-}
+  VLLM_INTERACTIVE_REASONING: ${VLLM_INTERACTIVE_REASONING-medium}
+  # Must equal --max-num-seqs on the vllm service below. The workers size
+  # their fan-out from it.
+  VLLM_MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-4}
+  VLLM_TIMEOUT_SECONDS: ${VLLM_TIMEOUT_SECONDS:-300}
   EMBEDDING_DIMENSION: 768
-  EMBEDDING_MODEL: embeddinggemma
+  EMBEDDING_MODEL: ${VLLM_EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
   APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
   ENVIRONMENT: ${ENVIRONMENT:-development}
   AUTH_PEPPER: ${AUTH_PEPPER:-development-only-change-me}
@@ -70,6 +74,14 @@ services:
       langgraph-init: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
+      # Gates on the model pull so no task reaches a model that is not there
+      # yet. required:false keeps the platform-only profile startable: model-init
+      # lives in the ai profile, and without this compose refuses the project.
+      model-init: { condition: service_completed_successfully, required: false }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
       interval: 15s
@@ -133,6 +145,19 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      # Gates on the model pull so no task reaches a model that is not there
+      # yet. required:false keeps the platform-only profile startable: model-init
+      # lives in the ai profile, and without this compose refuses the project.
+      model-init: { condition: service_completed_successfully, required: false }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with Ollama for the remainder and the GPU work is what suffers.
+    # Coach turns only: one stream at a time, concurrency 2.
+    mem_limit: 2g
     restart: unless-stopped
 
   worker-batch:
@@ -146,13 +171,13 @@ services:
       # only on the workers -- the API is a single process, and multiprocess
       # mode would change what its own /metrics reports.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prom
-    # Matches OLLAMA_NUM_PARALLEL: one Celery child per decode slot, so an
+    # Matches VLLM_MAX_NUM_SEQS: one Celery child per decode slot, so an
     # enrichment backlog actually fills the GPU instead of arriving one job at
     # a time. Raising this above the slot count only moves the queue from
-    # Celery (visible) into Ollama (not).
+    # Celery (visible) into vLLM (not).
     expose: ["9100"]
     tmpfs: ["/tmp/prom"]
-    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=${OLLAMA_NUM_PARALLEL:-4} --loglevel=INFO
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=${VLLM_MAX_NUM_SEQS:-4} --loglevel=INFO
     healthcheck: *worker-healthcheck
     volumes:
       - ./config:/app/config:ro
@@ -160,6 +185,19 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      # Gates on the model pull so no task reaches a model that is not there
+      # yet. required:false keeps the platform-only profile startable: model-init
+      # lives in the ai profile, and without this compose refuses the project.
+      model-init: { condition: service_completed_successfully, required: false }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with Ollama for the remainder and the GPU work is what suffers.
+    # Holds an embedding batch and a posting body per slot.
+    mem_limit: 4g
     restart: unless-stopped
 
   # Source crawls run on their own queue: they are long (tens of minutes for a
@@ -185,6 +223,19 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      # Gates on the model pull so no task reaches a model that is not there
+      # yet. required:false keeps the platform-only profile startable: model-init
+      # lives in the ai profile, and without this compose refuses the project.
+      model-init: { condition: service_completed_successfully, required: false }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with Ollama for the remainder and the GPU work is what suffers.
+    # A full ATS sweep buffers large JSON payloads per employer.
+    mem_limit: 4g
     restart: unless-stopped
 
   # Scheduled maintenance: the outbox relay, digests, backups, metric sampling.
@@ -209,6 +260,19 @@ services:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
+      # Gates on the model pull so no task reaches a model that is not there
+      # yet. required:false keeps the platform-only profile startable: model-init
+      # lives in the ai profile, and without this compose refuses the project.
+      model-init: { condition: service_completed_successfully, required: false }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with Ollama for the remainder and the GPU work is what suffers.
+    # pg_dump/pg_restore and the gzip archive run in this container.
+    mem_limit: 6g
     restart: unless-stopped
 
   # The scheduler. Replaces nine n8n workflows that were inert by construction:
@@ -235,6 +299,19 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
+      # Gates on the model pull so no task reaches a model that is not there
+      # yet. required:false keeps the platform-only profile startable: model-init
+      # lives in the ai profile, and without this compose refuses the project.
+      model-init: { condition: service_completed_successfully, required: false }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with Ollama for the remainder and the GPU work is what suffers.
+    # Emits schedule ticks and nothing else.
+    mem_limit: 512m
     restart: unless-stopped
 
   postgres:

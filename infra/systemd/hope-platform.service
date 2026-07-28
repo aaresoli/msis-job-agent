@@ -29,7 +29,7 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-WorkingDirectory=/home/aashish/nvidia-workbench/msis-job-agent
+WorkingDirectory=/home/aashish/projects/msis-job-agent
 # Compose reads secrets from .env in WorkingDirectory. systemd does not run a
 # login shell, so anything expected from the user's profile must be set here.
 Environment=COMPOSE_PROJECT_NAME=hope-career-intelligence
@@ -37,8 +37,9 @@ Environment=COMPOSE_PROJECT_NAME=hope-career-intelligence
 # into a rebuild, and a rebuild that fails would leave the platform down.
 ExecStart=/usr/bin/docker compose --profile platform --profile ai --profile observability --profile dev up -d --remove-orphans
 ExecStop=/usr/bin/docker compose --profile platform --profile ai --profile observability --profile dev stop
-# Pulling a 65GB model on a cold volume can outlast the default 90s.
-TimeoutStartSec=900
+# Downloading and loading GPT-OSS-120B on a cold Hugging Face cache can take
+# well beyond the default 90 seconds.
+TimeoutStartSec=3600
 
 [Install]
 WantedBy=multi-user.target

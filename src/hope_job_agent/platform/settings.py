@@ -29,14 +29,11 @@ class PlatformSettings(BaseSettings):
     # graphs degrade to review/deterministic fallbacks.
     vllm_base_url: str = ""
     vllm_chat_model: str = ""
-    # Optional second served-model name for the coach. Empty uses
-    # vllm_chat_model: on one Spark, continuous batching means one 120B
-    # server handles both the batch queue and the coach.
-    vllm_interactive_model: str = ""
-    # Separate OpenAI-compatible embedding server (CPU on the Spark). Empty
-    # falls back to vllm_base_url, which is wrong for a chat-only vLLM.
-    vllm_embedding_base_url: str = ""
-    vllm_embedding_model: str = "google/embeddinggemma-300m"
+    # Embeddings use Hugging Face TEI rather than sharing the chat server.
+    # Keeping this provider-neutral also makes an embedding backend swap
+    # independent from vLLM.
+    embedding_base_url: str = ""
+    embedding_model: str = "google/embeddinggemma-300m"
     # Server --max-model-len. Used client-side only to warn before a prompt is
     # likely to be rejected. 0 disables the warning.
     vllm_max_model_len: int = 16384
@@ -53,9 +50,13 @@ class PlatformSettings(BaseSettings):
     # scarcer than GPU time here, so the default keeps the quality.
     vllm_batch_reasoning: str = ""
     vllm_interactive_reasoning: str = "medium"
-    # Must match --max-num-seqs on the vLLM server. Workers size their fan-out
-    # from it: more in-flight requests than slots just queue inside vLLM.
-    vllm_max_num_seqs: int = 4
+    # Application-side batch fan-out. The server may keep more decode slots
+    # than this so an interactive request can enter immediately.
+    vllm_batch_concurrency: int = 4
+    # vLLM schedules lower numeric values first. Coach traffic stays ahead of
+    # enrichment without needing a second copy of the 120B model.
+    vllm_batch_priority: int = 0
+    vllm_interactive_priority: int = -10
     # A 120B-class model on a long enrichment prompt does not answer in 60s.
     vllm_timeout_seconds: float = 300.0
     redis_url: str = "redis://localhost:6379/0"

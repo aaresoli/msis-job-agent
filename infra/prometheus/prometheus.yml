@@ -30,3 +30,11 @@ scrape_configs:
           - "worker-batch:9100"
           - "worker-ingest:9100"
           - "worker-ops:9100"
+
+  - job_name: vllm
+    static_configs:
+      - targets: ["vllm:8000"]
+
+  - job_name: embedding
+    static_configs:
+      - targets: ["embed:9000"]

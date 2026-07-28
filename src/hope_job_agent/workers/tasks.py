@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import io
 import logging
 import tempfile
@@ -25,6 +24,11 @@ from hope_job_agent.ai import graphs
 from hope_job_agent.ai.checkpoints import (
     delete_checkpoint_thread,
     postgres_checkpointer,
+)
+from hope_job_agent.ai.embeddings import (
+    document_embedding_text,
+    embedding_input_hash,
+    query_embedding_text,
 )
 from hope_job_agent.ai.graphs import (
     build_job_enrichment_graph,
@@ -138,14 +142,6 @@ def _reset_factory_after_fork(**_kwargs: object) -> None:
     get_model_provider.cache_clear()
 
 
-# embeddinggemma is trained with task prefixes and does not apply them itself.
-# Documents and queries take different ones; using a single prefix for both
-# costs retrieval quality silently, which is the same class of failure as the
-# dimension mismatch below.
-EMBED_DOCUMENT_PREFIX = "title: none | text: "
-EMBED_QUERY_PREFIX = "task: search result | query: "
-
-
 def _usable_vector(vector: list[float], label: str) -> bool:
     """Return whether ``vector`` matches the configured pgvector width.
 
@@ -161,7 +157,7 @@ def _usable_vector(vector: list[float], label: str) -> bool:
         return True
     LOGGER.warning(
         "%s embedding has %d dimensions but EMBEDDING_DIMENSION is %d; "
-        "check VLLM_EMBEDDING_MODEL. Vector discarded.",
+        "check EMBEDDING_MODEL. Vector discarded.",
         label,
         len(vector),
         expected,
@@ -208,7 +204,7 @@ def enrich_job(job_id: str) -> dict[str, Any]:
             # Read from settings rather than provider.health(), which costs a
             # GET /api/tags on every newly enriched job to learn a value the
             # configuration already holds.
-            model=get_platform_settings().ollama_chat_model,
+            model=get_platform_settings().vllm_chat_model,
         )
         row.skills = payload.get("skills", [])
         row.requirements = payload.get("requirements", [])
@@ -259,16 +255,16 @@ def embed_jobs(job_ids: list[str]) -> dict[str, Any]:
 
         pending: list[tuple[UUID, str, str]] = []
         for job in jobs:
-            text = f"{job.title}\n{job.description or ''}"
-            digest = hashlib.sha256(text.encode()).hexdigest()
+            model_input = document_embedding_text(job.title, job.description or "")
+            digest = embedding_input_hash(model_input)
             existing = stored.get(job.id)
             if (
                 existing is not None
                 and existing.embedding_input_hash == digest
-                and existing.embedding_model == settings.ollama_embedding_model
+                and existing.embedding_model == settings.embedding_model
             ):
                 continue
-            pending.append((job.id, text, digest))
+            pending.append((job.id, model_input, digest))
 
         if not pending:
             return {"status": "unchanged", "embedded": 0, "requested": len(job_ids)}
@@ -277,9 +273,7 @@ def embed_jobs(job_ids: list[str]) -> dict[str, Any]:
         for start in range(0, len(pending), EMBEDDING_BATCH_SIZE):
             chunk = pending[start : start + EMBEDDING_BATCH_SIZE]
             try:
-                vectors = provider.embed(
-                    [EMBED_DOCUMENT_PREFIX + text for _, text, _ in chunk]
-                )
+                vectors = provider.embed([text for _, text, _ in chunk])
             except ModelUnavailable:
                 LOGGER.warning("Embedding batch skipped: local model unavailable")
                 break
@@ -295,7 +289,7 @@ def embed_jobs(job_ids: list[str]) -> dict[str, Any]:
                 if not _usable_vector(vector, "job"):
                     continue
                 repository.upsert_embedding(
-                    job_id, vector, settings.ollama_embedding_model, digest
+                    job_id, vector, settings.embedding_model, digest
                 )
                 embedded += 1
         return {
@@ -832,7 +826,7 @@ def generate_profile_matches(profile_id: str) -> dict[str, Any]:
                     " ".join(student.geo_preference),
                 ]
             )
-            vector = provider.embed([EMBED_QUERY_PREFIX + profile_text])[0]
+            vector = provider.embed([query_embedding_text(profile_text)])[0]
             if _usable_vector(vector, "student profile"):
                 vector_by_id = {
                     job.id: similarity
@@ -840,10 +834,10 @@ def generate_profile_matches(profile_id: str) -> dict[str, Any]:
                         vector,
                         filters={"status": "active"},
                         limit=100,
-                        embedding_model=get_platform_settings().ollama_embedding_model,
+                        embedding_model=get_platform_settings().embedding_model,
                     )
                 }
-        except (ModelUnavailable, IndexError):
+        except ModelUnavailable, IndexError:
             pass
 
         candidate_ids = deterministic_ids | set(vector_by_id)

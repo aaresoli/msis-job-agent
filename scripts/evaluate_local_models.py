@@ -1,22 +1,9 @@
-"""Benchmark local Ollama models against this project's real contracts.
+"""Benchmark a vLLM model against HOPE's real extraction contract.
 
-Public tok/s benchmarks say nothing about the question that actually decides
-the model here: how often does it produce output the enrichment graph will
-*accept*? ``ai/graphs.py`` rejects a payload whose evidence quotes are not
-present verbatim in the posting, so a fast model that paraphrases is worse than
-a slower one that copies. This script measures both, per model:
-
-* first-token latency and sustained tok/s, from a real streaming call
-* schema-compliance rate, by running the real ``build_job_enrichment_graph``
-  over the committed gold postings and counting how many reach ``ready``
-  instead of being routed to ``review``
-
-Usage:
-
-    python scripts/evaluate_local_models.py gpt-oss:120b gpt-oss:20b
-    python scripts/evaluate_local_models.py --base-url http://localhost:11434 ...
-
-It only reads. It never writes to the database.
+Measures time to first token and usage-derived decode throughput through vLLM's
+OpenAI-compatible streaming API, then runs the committed gold postings through
+the production enrichment graph. It is read-only and never writes checkpoints
+or application data.
 """
 
 from __future__ import annotations
@@ -28,19 +15,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from hope_job_agent.ai.graphs import STATUS_READY, build_job_enrichment_graph
-from hope_job_agent.ai.provider import ModelUnavailable, OllamaModelProvider
+from hope_job_agent.ai.provider import ModelUnavailable, VllmModelProvider
 
 GOLD_POSTINGS = (
     Path(__file__).resolve().parents[1] / "data" / "gold_job_postings_labeled.json"
 )
-
 LATENCY_PROMPT = [
     {
         "role": "user",
-        "content": (
-            "In two sentences, explain what a business analyst does. Answer directly."
-        ),
+        "content": "In two sentences, explain what a business analyst does.",
     }
 ]
 
@@ -60,28 +46,61 @@ class ModelReport:
         return self.ready / total if total else 0.0
 
 
-def measure_latency(provider: OllamaModelProvider) -> tuple[float | None, float | None]:
-    """Return (seconds to first chunk, sustained chunks/second).
+def measure_latency(
+    base_url: str,
+    model: str,
+    *,
+    reasoning: str,
+    max_tokens: int,
+    priority: int,
+    timeout_seconds: float,
+) -> tuple[float | None, float | None]:
+    """Return TTFT and usage-derived completion tokens per decode second."""
 
-    Chunks are counted rather than tokens: Ollama emits roughly one chunk per
-    token, and counting what actually arrives avoids depending on a tokenizer
-    the client does not have.
-    """
+    body: dict[str, Any] = {
+        "model": model,
+        "messages": LATENCY_PROMPT,
+        "temperature": 0,
+        "max_tokens": max_tokens,
+        "priority": priority,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if reasoning:
+        body["reasoning_effort"] = reasoning
 
     started = time.perf_counter()
     first: float | None = None
-    chunks = 0
+    completion_tokens = 0
     try:
-        for _ in provider.stream_chat(LATENCY_PROMPT):
-            if first is None:
-                first = time.perf_counter() - started
-            chunks += 1
-    except ModelUnavailable:
+        with httpx.stream(
+            "POST",
+            f"{base_url.rstrip('/')}/v1/chat/completions",
+            json=body,
+            timeout=httpx.Timeout(timeout_seconds, connect=5),
+        ) as response:
+            response.raise_for_status()
+            for line in response.iter_lines():
+                if not line.startswith("data: "):
+                    continue
+                data = line[6:].strip()
+                if data == "[DONE]":
+                    continue
+                item = json.loads(data)
+                usage = item.get("usage") or {}
+                completion_tokens = int(
+                    usage.get("completion_tokens") or completion_tokens
+                )
+                choices = item.get("choices") or []
+                if choices and (choices[0].get("delta") or {}).get("content"):
+                    first = first or time.perf_counter() - started
+    except httpx.HTTPError, json.JSONDecodeError:
         return None, None
+
     elapsed = time.perf_counter() - started
-    if first is None or elapsed <= first:
-        return first, None
-    return first, chunks / elapsed
+    decode_seconds = elapsed - first if first is not None else 0
+    throughput = completion_tokens / decode_seconds if decode_seconds > 0 else None
+    return first, throughput
 
 
 def load_postings() -> list[dict[str, Any]]:
@@ -90,19 +109,30 @@ def load_postings() -> list[dict[str, Any]]:
         {
             "job_id": posting["id"],
             "title": posting["title"],
-            # The gold set carries a summary rather than the full posting body.
-            # That is the harder case for the quote check, not an easier one:
-            # there is less text for a verbatim quote to land in.
             "description": posting.get("posting_summary", ""),
         }
         for posting in postings
     ]
 
 
-def evaluate(provider: OllamaModelProvider, model: str) -> ModelReport:
-    first_token, throughput = measure_latency(provider)
-    # No checkpointer: this is a read-only benchmark and should not write
-    # LangGraph state into Postgres.
+def evaluate(
+    provider: VllmModelProvider,
+    model: str,
+    *,
+    base_url: str,
+    reasoning: str,
+    max_tokens: int,
+    priority: int,
+    timeout_seconds: float,
+) -> ModelReport:
+    first_token, throughput = measure_latency(
+        base_url,
+        model,
+        reasoning=reasoning,
+        max_tokens=max_tokens,
+        priority=priority,
+        timeout_seconds=timeout_seconds,
+    )
     graph = build_job_enrichment_graph(provider)
     ready = 0
     reviewed = 0
@@ -135,72 +165,65 @@ def format_report(report: ModelReport) -> str:
         else "n/a"
     )
     return (
-        f"{report.model:<24} {first:>10} {rate:>12} "
-        f"{report.compliance_rate:>10.0%}  ({report.ready}/"
-        f"{report.ready + report.reviewed})"
+        f"{report.model:<30} {first:>10} {rate:>10} "
+        f"{report.compliance_rate:>10.0%} "
+        f"({report.ready}/{report.ready + report.reviewed})"
     )
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("models", nargs="+", help="Ollama model tags to compare")
     parser.add_argument(
-        "--base-url",
-        default="http://localhost:11434",
-        help="Ollama endpoint (default: %(default)s)",
+        "models", nargs="*", default=["openai/gpt-oss-120b"], help="served model IDs"
     )
-    parser.add_argument(
-        "--num-ctx",
-        type=int,
-        default=32768,
-        help="Context window to request (default: %(default)s)",
-    )
-    parser.add_argument(
-        "--reasoning",
-        default="",
-        help=(
-            "Reasoning effort to request (gpt-oss: low/medium/high). Empty "
-            "leaves the model default. This is the knob most likely to trade "
-            "throughput against the verbatim-quote contract, so compare "
-            "'schema ok' across settings before lowering it in production."
-        ),
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print why each rejected posting was routed to review",
-    )
+    parser.add_argument("--base-url", default="http://localhost:8001")
+    parser.add_argument("--embedding-base-url", default="http://localhost:8002")
+    parser.add_argument("--embedding-model", default="google/embeddinggemma-300m")
+    parser.add_argument("--max-model-len", type=int, default=16384)
+    parser.add_argument("--max-tokens", type=int, default=2048)
+    parser.add_argument("--priority", type=int, default=0)
+    parser.add_argument("--reasoning", default="")
+    parser.add_argument("--timeout-seconds", type=float, default=300)
+    parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
-    print(f"{'model':<24} {'1st token':>10} {'chunks/s':>12} {'schema ok':>10}")
-    print("-" * 64)
+    print(f"{'model':<30} {'TTFT':>10} {'tok/s':>10} {'schema ok':>10}")
+    print("-" * 68)
     reports: list[ModelReport] = []
     for model in args.models:
-        provider = OllamaModelProvider(
+        provider = VllmModelProvider(
             args.base_url,
             model,
-            num_ctx=args.num_ctx,
-            keep_alive="2h",
+            args.embedding_model,
+            embedding_base_url=args.embedding_base_url,
+            timeout_seconds=args.timeout_seconds,
+            max_model_len=args.max_model_len,
+            max_tokens=args.max_tokens,
             reasoning=args.reasoning,
+            priority=args.priority,
+            max_parallel=1,
         )
-        report = evaluate(provider, model)
+        report = evaluate(
+            provider,
+            model,
+            base_url=args.base_url,
+            reasoning=args.reasoning,
+            max_tokens=args.max_tokens,
+            priority=args.priority,
+            timeout_seconds=args.timeout_seconds,
+        )
         reports.append(report)
         print(format_report(report))
 
     if args.verbose:
         for report in reports:
-            if not report.errors:
-                continue
-            print(f"\n{report.model} rejections:")
-            for error in report.errors:
-                print(f"  - {error}")
-
-    print(
-        "\n'schema ok' is the share of gold postings the enrichment graph "
-        "accepted.\nA low rate with a fast model usually means it paraphrases "
-        "evidence quotes\ninstead of copying them verbatim."
+            if report.errors:
+                print(f"\n{report.model} rejections:")
+                for error in report.errors:
+                    print(f"  - {error}")
+    return (
+        0 if all(report.ready > 0 and report.reviewed == 0 for report in reports) else 1
     )
-    return 0
 
 
 if __name__ == "__main__":

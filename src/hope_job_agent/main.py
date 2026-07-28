@@ -13,7 +13,6 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from hope_job_agent import __version__
 from hope_job_agent.ai.provider import (
     WORKLOAD_BATCH,
-    WORKLOAD_INTERACTIVE,
     get_model_provider,
 )
 from hope_job_agent.api import (
@@ -91,20 +90,14 @@ def create_app() -> FastAPI:
 
     @application.get("/health/ready")
     def readiness() -> JSONResponse:
-        """Report the health of every model workload the platform actually uses.
+        """Report the shared vLLM and TEI deployment health.
 
-        Checking only the batch provider left the coach uncovered: a typo in
-        ``VLLM_INTERACTIVE_MODEL`` reported available while every coach
-        request failed, which is the same failure the per-model check exists to
-        catch. The interactive check is skipped when it resolves to the batch
-        model, so the common single-model deployment still costs one round trip.
+        Batch and coach traffic use one served model; their request priority and
+        completion budgets differ client-side, so one probe covers both paths.
         """
 
         batch = get_model_provider(WORKLOAD_BATCH).health()
-        interactive = get_model_provider(WORKLOAD_INTERACTIVE).health()
         workloads = {WORKLOAD_BATCH: batch}
-        if interactive.model != batch.model:
-            workloads[WORKLOAD_INTERACTIVE] = interactive
         payload = {
             "status": "ready",
             "model": {

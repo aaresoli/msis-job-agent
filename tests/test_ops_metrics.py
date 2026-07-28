@@ -41,12 +41,10 @@ def test_no_verified_backup_reports_infinite_age_not_missing_data() -> None:
     assert _value("backup_verified") == 0
 
 
-def test_an_evicted_model_is_published_as_zero(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Eviction must not look identical to a model that is still resident.
-
-    Without an explicit zero the last "1" would persist forever, and
-    HopeModelThrashing would have nothing to correlate against.
-    """
+def test_a_missing_vllm_model_is_published_as_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An engine restart must clear the last known model-ready signal."""
 
     resident: list[str] = ["gpt-oss:120b"]
 
@@ -57,11 +55,11 @@ def test_an_evicted_model_is_published_as_zero(monkeypatch: pytest.MonkeyPatch) 
 
         @staticmethod
         def json() -> dict[str, list[dict[str, str]]]:
-            return {"models": [{"model": name} for name in resident]}
+            return {"data": [{"id": name} for name in resident]}
 
     monkeypatch.setattr(
         "hope_job_agent.ops.metrics.get_platform_settings",
-        lambda: type("_S", (), {"ollama_base_url": "http://ollama:11434"})(),
+        lambda: type("_S", (), {"vllm_base_url": "http://vllm:8000"})(),
     )
     monkeypatch.setattr("httpx.get", lambda *_a, **_k: _Response())
 
@@ -73,7 +71,7 @@ def test_an_evicted_model_is_published_as_zero(monkeypatch: pytest.MonkeyPatch) 
     assert _value("model_loaded", model="gpt-oss:120b") == 0
 
 
-def test_residency_sample_survives_an_unreachable_ollama(
+def test_model_sample_survives_an_unreachable_vllm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """One unreachable dependency must not take the whole sample down."""
@@ -82,7 +80,7 @@ def test_residency_sample_survives_an_unreachable_ollama(
 
     monkeypatch.setattr(
         "hope_job_agent.ops.metrics.get_platform_settings",
-        lambda: type("_S", (), {"ollama_base_url": "http://ollama:11434"})(),
+        lambda: type("_S", (), {"vllm_base_url": "http://vllm:8000"})(),
     )
 
     def _fail(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202

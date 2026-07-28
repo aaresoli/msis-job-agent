@@ -4812,7 +4812,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Report the health of every model workload the platform actually uses.\n\nChecking only the batch provider left the coach uncovered: a typo in\n``OLLAMA_INTERACTIVE_MODEL`` reported available while every coach\nrequest failed, which is the same failure the per-model check exists to\ncatch. The interactive check is skipped when it resolves to the batch\nmodel, so the common single-model deployment still costs one round trip.",
+        "description": "Report the shared vLLM and TEI deployment health.\n\nBatch and coach traffic use one served model; their request priority and\ncompletion budgets differ client-side, so one probe covers both paths.",
         "operationId": "readiness_health_ready_get",
         "responses": {
           "200": {

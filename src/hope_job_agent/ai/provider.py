@@ -1,9 +1,13 @@
-"""Provider-neutral local model gateway with a vLLM (OpenAI-compatible) implementation."""
+"""Provider-neutral local model gateway.
+
+The concrete implementation uses vLLM's OpenAI-compatible API.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import uuid
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from functools import lru_cache
@@ -17,10 +21,8 @@ from hope_job_agent.platform.settings import get_platform_settings
 
 LOGGER = logging.getLogger(__name__)
 
-# Which model a caller wants. The Celery queues split the same way
-# (see workers/celery_app.py). On vLLM both workloads normally hit one
-# continuously-batched server; the interactive override exists for a second
-# served-model name if an operator ever splits them.
+# The Celery queues split these workloads. Both use the same continuously
+# batched model; request priority keeps the coach responsive under batch load.
 WORKLOAD_BATCH = "batch"
 WORKLOAD_INTERACTIVE = "interactive"
 
@@ -96,6 +98,22 @@ def _model_ids_from_openai_list(payload: Any) -> set[str]:
     return ids
 
 
+def _tei_model_id(payload: Any) -> str | None:
+    """Return the served model identity from TEI's ``/info`` response."""
+
+    if not isinstance(payload, dict):
+        return None
+    for key in ("model_id", "served_model_name", "model"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            return value
+    model = payload.get("model")
+    if isinstance(model, dict):
+        value = model.get("model_id") or model.get("id")
+        return str(value) if value else None
+    return None
+
+
 class VllmModelProvider:
     """Talk to vLLM (chat) and an OpenAI-compatible embedding server.
 
@@ -118,6 +136,7 @@ class VllmModelProvider:
         reasoning: str = "",
         workload: str = WORKLOAD_BATCH,
         max_parallel: int = 1,
+        priority: int = 0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.chat_model = chat_model
@@ -128,8 +147,15 @@ class VllmModelProvider:
         self.reasoning = reasoning
         self.workload = workload
         self.max_parallel = max(1, max_parallel)
+        self.priority = priority
         self.timeout = httpx.Timeout(timeout_seconds, connect=5.0)
-        self._client = httpx.Client(timeout=self.timeout)
+        self._client = httpx.Client(
+            timeout=self.timeout,
+            limits=httpx.Limits(
+                max_connections=max(4, self.max_parallel + 2),
+                max_keepalive_connections=max(2, self.max_parallel),
+            ),
+        )
         self._embedding_width: int | None = None
 
     def _warn_if_over_context(self, messages: Sequence[dict[str, str]]) -> None:
@@ -167,7 +193,11 @@ class VllmModelProvider:
             "temperature": temperature,
             "max_tokens": self.max_tokens,
             "stream": stream,
+            "priority": self.priority,
+            "request_id": f"hope-{uuid.uuid4()}",
         }
+        if stream:
+            body["stream_options"] = {"include_usage": True}
         if schema is not None:
             # Guided JSON against the same Pydantic-exported schema the graphs
             # already validate. strict=True keeps the model inside the contract
@@ -289,7 +319,7 @@ class VllmModelProvider:
         return result
 
     def health(self) -> ModelHealth:
-        """Report ready only if chat and embedding endpoints serve the configured models."""
+        """Report ready only when chat and embedding models are usable."""
 
         try:
             chat_resp = self._client.get(f"{self.base_url}/v1/models", timeout=5.0)
@@ -309,23 +339,27 @@ class VllmModelProvider:
             )
 
         try:
-            embed_resp = self._client.get(
-                f"{self.embedding_base_url}/v1/models", timeout=5.0
+            embed_health = self._client.get(
+                f"{self.embedding_base_url}/health", timeout=5.0
             )
-            embed_resp.raise_for_status()
-            embed_ids = _model_ids_from_openai_list(embed_resp.json())
+            embed_health.raise_for_status()
+            embed_info = self._client.get(
+                f"{self.embedding_base_url}/info", timeout=5.0
+            )
+            embed_info.raise_for_status()
+            served_embedding = _tei_model_id(embed_info.json())
         except (httpx.HTTPError, ValueError) as exc:
             return ModelHealth(
                 False, self.name, self.chat_model, str(exc), self.embedding_model
             )
-        if self.embedding_model not in embed_ids:
+        if served_embedding and served_embedding != self.embedding_model:
             return ModelHealth(
                 False,
                 self.name,
                 self.chat_model,
                 (
                     f"embedding model not served: {self.embedding_model} "
-                    f"(have {sorted(embed_ids)})"
+                    f"(have {served_embedding})"
                 ),
                 self.embedding_model,
             )
@@ -340,7 +374,7 @@ class VllmModelProvider:
     def _embedding_width_detail(self) -> str | None:
         """Describe an embedding width that pgvector cannot store, if any.
 
-        ``EMBEDDING_DIMENSION`` and ``VLLM_EMBEDDING_MODEL`` are set
+        ``EMBEDDING_DIMENSION`` and ``EMBEDDING_MODEL`` are set
         independently, so a plausible-looking pair can disagree. Today that
         only surfaces at write time, where ``_usable_vector`` discards the
         result and logs — leaving a deployment that reports ready and stores no
@@ -366,10 +400,6 @@ class VllmModelProvider:
         return None
 
 
-# Back-compat alias for imports/tests mid-migration.
-OllamaModelProvider = VllmModelProvider
-
-
 @lru_cache
 def get_model_provider(workload: str = WORKLOAD_BATCH) -> ModelProvider:
     """Return the provider for ``workload``.
@@ -382,23 +412,25 @@ def get_model_provider(workload: str = WORKLOAD_BATCH) -> ModelProvider:
     settings = get_platform_settings()
     if not settings.vllm_base_url or not settings.vllm_chat_model:
         return DisabledModelProvider()
-    chat_model = settings.vllm_chat_model
     max_tokens = settings.vllm_max_tokens
     reasoning = settings.vllm_batch_reasoning
+    priority = settings.vllm_batch_priority
+    max_parallel = settings.vllm_batch_concurrency
     if workload == WORKLOAD_INTERACTIVE:
-        if settings.vllm_interactive_model:
-            chat_model = settings.vllm_interactive_model
         max_tokens = settings.vllm_interactive_max_tokens or settings.vllm_max_tokens
         reasoning = settings.vllm_interactive_reasoning
+        priority = settings.vllm_interactive_priority
+        max_parallel = 1
     return VllmModelProvider(
         settings.vllm_base_url,
-        chat_model,
-        settings.vllm_embedding_model,
-        embedding_base_url=settings.vllm_embedding_base_url,
+        settings.vllm_chat_model,
+        settings.embedding_model,
+        embedding_base_url=settings.embedding_base_url,
         timeout_seconds=settings.vllm_timeout_seconds,
         max_model_len=settings.vllm_max_model_len,
         max_tokens=max_tokens,
         reasoning=reasoning,
         workload=workload,
-        max_parallel=settings.vllm_max_num_seqs,
+        max_parallel=max_parallel,
+        priority=priority,
     )

@@ -16,11 +16,12 @@ domain logic; the platform sections describe what runs it in production.
   `interactive`, `batch`, `ingest`, `ops` — with one worker container each.
   `hope_job_agent.workers.schedules` holds the beat schedule; a single `beat`
   container runs it. See `docs/dgx_spark_deployment.md`.
-- **Local inference**: Ollama, behind the `ModelProvider` protocol in
-  `hope_job_agent.ai.provider`. Models are split by workload (a larger batch
-  model, a smaller interactive one for the streaming coach). No hosted model
-  provider is used, and an unreachable model degrades to `review`/`degraded`
-  rather than failing the request.
+- **Local inference**: one `openai/gpt-oss-120b` vLLM engine behind the
+  `ModelProvider` protocol, with OpenAI-compatible chat/streaming and structured
+  JSON Schema output. Batch and coach share continuous batching; vLLM request
+  priority keeps coach traffic responsive. TEI serves 768-d EmbeddingGemma
+  vectors on CPU. No hosted provider is used, and an unreachable model degrades
+  to `review`/`degraded` rather than failing the request.
 - **Structured output**: every extraction path runs a
   generate → validate → retry loop against a Pydantic schema
   (`hope_job_agent.ai.schemas`), with evidence quotes checked verbatim against

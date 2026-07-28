@@ -8,13 +8,9 @@ x-app-environment: &app-environment
   MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-development-only-change-me}
   MINIO_BUCKET: hope-private-documents
   VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000}
-  VLLM_CHAT_MODEL: ${VLLM_CHAT_MODEL:-}
-  VLLM_INTERACTIVE_MODEL: ${VLLM_INTERACTIVE_MODEL:-}
-  VLLM_EMBEDDING_BASE_URL: ${VLLM_EMBEDDING_BASE_URL:-http://embed:8002}
-  # 768-d public model. embeddinggemma is gated on Hugging Face and needs a
-  # token; bge-base keeps the pgvector width without one. Re-embed after a
-  # switch from embeddinggemma — the spaces are not interchangeable.
-  VLLM_EMBEDDING_MODEL: ${VLLM_EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
+  VLLM_CHAT_MODEL: ${VLLM_CHAT_MODEL:-openai/gpt-oss-120b}
+  EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://embed:80}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-google/embeddinggemma-300m}
   VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-16384}
   VLLM_MAX_TOKENS: ${VLLM_MAX_TOKENS:-2048}
   VLLM_INTERACTIVE_MAX_TOKENS: ${VLLM_INTERACTIVE_MAX_TOKENS:-1024}
@@ -25,12 +21,11 @@ x-app-environment: &app-environment
   # being treated as unset.
   VLLM_BATCH_REASONING: ${VLLM_BATCH_REASONING-}
   VLLM_INTERACTIVE_REASONING: ${VLLM_INTERACTIVE_REASONING-medium}
-  # Must equal --max-num-seqs on the vllm service below. The workers size
-  # their fan-out from it.
-  VLLM_MAX_NUM_SEQS: ${VLLM_MAX_NUM_SEQS:-4}
+  VLLM_BATCH_CONCURRENCY: ${VLLM_BATCH_CONCURRENCY:-4}
+  VLLM_BATCH_PRIORITY: ${VLLM_BATCH_PRIORITY:-0}
+  VLLM_INTERACTIVE_PRIORITY: ${VLLM_INTERACTIVE_PRIORITY:--10}
   VLLM_TIMEOUT_SECONDS: ${VLLM_TIMEOUT_SECONDS:-300}
   EMBEDDING_DIMENSION: 768
-  EMBEDDING_MODEL: ${VLLM_EMBEDDING_MODEL:-BAAI/bge-base-en-v1.5}
   APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
   ENVIRONMENT: ${ENVIRONMENT:-development}
   AUTH_PEPPER: ${AUTH_PEPPER:-development-only-change-me}
@@ -74,10 +69,6 @@ services:
       langgraph-init: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
-      # Gates on the model pull so no task reaches a model that is not there
-      # yet. required:false keeps the platform-only profile startable: model-init
-      # lives in the ai profile, and without this compose refuses the project.
-      model-init: { condition: service_completed_successfully, required: false }
       # Chat and embed become healthy only after weights load; workers can start
       # earlier and retry ModelUnavailable. required:false keeps platform-only up.
       vllm: { condition: service_healthy, required: false }
@@ -145,17 +136,13 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-      # Gates on the model pull so no task reaches a model that is not there
-      # yet. required:false keeps the platform-only profile startable: model-init
-      # lives in the ai profile, and without this compose refuses the project.
-      model-init: { condition: service_completed_successfully, required: false }
       # Chat and embed become healthy only after weights load; workers can start
       # earlier and retry ModelUnavailable. required:false keeps platform-only up.
       vllm: { condition: service_healthy, required: false }
       embed: { condition: service_healthy, required: false }
     # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
     # accounts for ~96GB of the box; without a limit a runaway task here competes
-    # with Ollama for the remainder and the GPU work is what suffers.
+    # with vLLM for the remainder and the GPU work is what suffers.
     # Coach turns only: one stream at a time, concurrency 2.
     mem_limit: 2g
     restart: unless-stopped
@@ -171,13 +158,11 @@ services:
       # only on the workers -- the API is a single process, and multiprocess
       # mode would change what its own /metrics reports.
       PROMETHEUS_MULTIPROC_DIR: /tmp/prom
-    # Matches VLLM_MAX_NUM_SEQS: one Celery child per decode slot, so an
-    # enrichment backlog actually fills the GPU instead of arriving one job at
-    # a time. Raising this above the slot count only moves the queue from
-    # Celery (visible) into vLLM (not).
+    # Four batch children fill the GPU while leaving vLLM headroom for the
+    # higher-priority interactive queue.
     expose: ["9100"]
     tmpfs: ["/tmp/prom"]
-    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=${VLLM_MAX_NUM_SEQS:-4} --loglevel=INFO
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=${VLLM_BATCH_CONCURRENCY:-4} --loglevel=INFO
     healthcheck: *worker-healthcheck
     volumes:
       - ./config:/app/config:ro
@@ -185,17 +170,13 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-      # Gates on the model pull so no task reaches a model that is not there
-      # yet. required:false keeps the platform-only profile startable: model-init
-      # lives in the ai profile, and without this compose refuses the project.
-      model-init: { condition: service_completed_successfully, required: false }
       # Chat and embed become healthy only after weights load; workers can start
       # earlier and retry ModelUnavailable. required:false keeps platform-only up.
       vllm: { condition: service_healthy, required: false }
       embed: { condition: service_healthy, required: false }
     # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
     # accounts for ~96GB of the box; without a limit a runaway task here competes
-    # with Ollama for the remainder and the GPU work is what suffers.
+    # with vLLM for the remainder and the GPU work is what suffers.
     # Holds an embedding batch and a posting body per slot.
     mem_limit: 4g
     restart: unless-stopped
@@ -223,17 +204,9 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-      # Gates on the model pull so no task reaches a model that is not there
-      # yet. required:false keeps the platform-only profile startable: model-init
-      # lives in the ai profile, and without this compose refuses the project.
-      model-init: { condition: service_completed_successfully, required: false }
-      # Chat and embed become healthy only after weights load; workers can start
-      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
-      vllm: { condition: service_healthy, required: false }
-      embed: { condition: service_healthy, required: false }
     # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
     # accounts for ~96GB of the box; without a limit a runaway task here competes
-    # with Ollama for the remainder and the GPU work is what suffers.
+    # with vLLM for the remainder and the GPU work is what suffers.
     # A full ATS sweep buffers large JSON payloads per employer.
     mem_limit: 4g
     restart: unless-stopped
@@ -260,17 +233,9 @@ services:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
       minio: { condition: service_healthy }
-      # Gates on the model pull so no task reaches a model that is not there
-      # yet. required:false keeps the platform-only profile startable: model-init
-      # lives in the ai profile, and without this compose refuses the project.
-      model-init: { condition: service_completed_successfully, required: false }
-      # Chat and embed become healthy only after weights load; workers can start
-      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
-      vllm: { condition: service_healthy, required: false }
-      embed: { condition: service_healthy, required: false }
     # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
     # accounts for ~96GB of the box; without a limit a runaway task here competes
-    # with Ollama for the remainder and the GPU work is what suffers.
+    # with vLLM for the remainder and the GPU work is what suffers.
     # pg_dump/pg_restore and the gzip archive run in this container.
     mem_limit: 6g
     restart: unless-stopped
@@ -299,17 +264,9 @@ services:
     depends_on:
       migrate: { condition: service_completed_successfully }
       redis: { condition: service_healthy }
-      # Gates on the model pull so no task reaches a model that is not there
-      # yet. required:false keeps the platform-only profile startable: model-init
-      # lives in the ai profile, and without this compose refuses the project.
-      model-init: { condition: service_completed_successfully, required: false }
-      # Chat and embed become healthy only after weights load; workers can start
-      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
-      vllm: { condition: service_healthy, required: false }
-      embed: { condition: service_healthy, required: false }
     # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
     # accounts for ~96GB of the box; without a limit a runaway task here competes
-    # with Ollama for the remainder and the GPU work is what suffers.
+    # with vLLM for the remainder and the GPU work is what suffers.
     # Emits schedule ticks and nothing else.
     mem_limit: 512m
     restart: unless-stopped
@@ -386,82 +343,73 @@ services:
       retries: 10
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:0.17.0
+  # One continuously batched GPT-OSS engine serves batch and coach traffic.
+  # Priority scheduling reserves responsiveness without loading a second model.
+  vllm:
+    image: ${VLLM_IMAGE:-nvcr.io/nvidia/vllm:26.06-py3}
     profiles: ["ai"]
     gpus: all
+    shm_size: 16gb
     environment:
-      # A 65GB chat model takes minutes to load; keep it resident between the
-      # bursts of enrichment work a refresh produces.
-      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-2h}
-      # The interactive and batch queues use different chat models. Ollama
-      # evicts one model to load another by default, which would make that
-      # split worse than useless: every queue switch would pay a reload. Three
-      # slots covers both chat models plus the embedding model.
-      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-3}
-      # The Spark is bound by memory bandwidth, not compute. A single-stream
-      # decode reads gpt-oss:120b's active weights once per token and leaves
-      # most of the machine idle; concurrent sequences amortize that same read
-      # across the batch, so aggregate throughput scales with slots at close to
-      # unchanged per-token latency. Default 1 was leaving that on the table.
-      #
-      # Slots are paid for in KV cache, which is why the two settings below
-      # travel with this one: at num_ctx 32768 the 120b reserved 16GB of KV for
-      # a *single* slot, and four of those does not fit beside 65GB of weights.
-      OLLAMA_NUM_PARALLEL: ${OLLAMA_NUM_PARALLEL:-4}
-      # Required before KV quantization is allowed, and a win on its own for
-      # the prefill-heavy job-description prompts.
-      OLLAMA_FLASH_ATTENTION: ${OLLAMA_FLASH_ATTENTION:-true}
-      # Roughly halves KV cache per slot. q8_0 rather than q4_0: the evidence
-      # quotes have to come back verbatim, which is the first thing a lossy KV
-      # cache degrades. `-` not `:-` so an explicitly empty value rolls back to
-      # Ollama's f16 default instead of silently re-enabling quantization.
-      OLLAMA_KV_CACHE_TYPE: ${OLLAMA_KV_CACHE_TYPE-q8_0}
-    volumes: ["hope_ollama:/root/.ollama"]
-    ports: ["127.0.0.1:11434:11434"]
+      HF_HOME: /root/.cache/huggingface
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        export HF_TOKEN="$$(cat /run/secrets/hf_token)"
+        exec vllm serve "${VLLM_MODEL_ID:-openai/gpt-oss-120b}" \
+          --host 0.0.0.0 \
+          --port 8000 \
+          --served-model-name "${VLLM_CHAT_MODEL:-openai/gpt-oss-120b}" \
+          --max-model-len "${VLLM_MAX_MODEL_LEN:-16384}" \
+          --max-num-seqs "${VLLM_MAX_NUM_SEQS:-8}" \
+          --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS:-8192}" \
+          --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.82}" \
+          --enable-prefix-caching \
+          --enable-chunked-prefill \
+          --scheduling-policy priority \
+          --reasoning-parser openai_gptoss \
+          --enable-force-include-usage
+    volumes: ["hope_huggingface:/root/.cache/huggingface"]
+    secrets: [hf_token]
+    ports: ["127.0.0.1:${VLLM_HOST_PORT:-8001}:8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30m
+      retries: 10
     restart: unless-stopped
 
-  # Pulls exactly the models the environment names. Removes the manual
-  # `ollama pull` step from the runbook and makes a fresh Spark reproducible.
-  #
-  # A one-shot: it exits 0 and the workers gate on that completion, so no task
-  # can reach a model that is not there yet. It deliberately does not warm the
-  # models -- loading 65GB of weights to have them evicted before the first
-  # real request costs minutes and buys nothing; OLLAMA_KEEP_ALIVE is what
-  # keeps them resident once real work arrives.
-  model-init:
-    image: ollama/ollama:0.17.0
+  # EmbeddingGemma runs on the ARM64 CPU TEI image, preserving GPU memory and
+  # the existing 768-d pgvector schema.
+  embed:
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-sha-30507cb@sha256:2873ddd3029bf6eed09c0befe737d88123107a0b89274b1552d68d1e3bb2a047}
     profiles: ["ai"]
     entrypoint: ["/bin/sh", "-c"]
     environment:
-      OLLAMA_HOST: http://ollama:11434
-      CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-}
-      INTERACTIVE_MODEL: ${OLLAMA_INTERACTIVE_MODEL:-}
-      EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-embeddinggemma}
+      HF_HOME: /data
     command:
       - |
-        set -e
-        until ollama list >/dev/null 2>&1; do
-          echo "waiting for ollama"; sleep 3
-        done
-        for model in "$$CHAT_MODEL" "$$INTERACTIVE_MODEL" "$$EMBEDDING_MODEL"; do
-          [ -n "$$model" ] || continue
-          # An empty OLLAMA_CHAT_MODEL is a supported configuration (the
-          # platform runs on the disabled provider), so a blank entry is
-          # skipped rather than treated as an error.
-          # `ollama list` always prints an explicit tag, so a bare name from
-          # the environment ("embeddinggemma") never matches its listed form
-          # ("embeddinggemma:latest") and would re-pull on every boot.
-          case "$$model" in *:*) tagged="$$model" ;; *) tagged="$$model:latest" ;; esac
-          if ollama list | awk '{print $$1}' | grep -qx "$$tagged"; then
-            echo "present: $$tagged"
-          else
-            echo "pulling: $$model"; ollama pull "$$model"
-          fi
-        done
-    depends_on:
-      ollama: { condition: service_started }
-    restart: "no"
+        set -eu
+        export HF_TOKEN="$$(cat /run/secrets/hf_token)"
+        exec text-embeddings-router \
+          --model-id "${EMBEDDING_MODEL:-google/embeddinggemma-300m}" \
+          --served-model-name "${EMBEDDING_MODEL:-google/embeddinggemma-300m}" \
+          --port 80 \
+          --dtype float32 \
+          --max-client-batch-size "${TEI_MAX_CLIENT_BATCH_SIZE:-32}" \
+          --max-batch-tokens "${TEI_MAX_BATCH_TOKENS:-16384}"
+    volumes: ["hope_huggingface:/data"]
+    secrets: [hf_token]
+    ports: ["127.0.0.1:${EMBEDDING_HOST_PORT:-8002}:80"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10m
+      retries: 10
+    restart: unless-stopped
 
   alertmanager:
     image: prom/alertmanager:v0.30.0
@@ -555,7 +503,11 @@ volumes:
   hope_alertmanager:
   hope_redis:
   hope_minio:
-  hope_ollama:
+  hope_huggingface:
   hope_prometheus:
   hope_loki:
   hope_grafana:
+
+secrets:
+  hf_token:
+    file: ${HF_TOKEN_FILE:-./secrets/hf_token}

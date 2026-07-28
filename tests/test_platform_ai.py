@@ -27,7 +27,7 @@ from hope_job_agent.ai.provider import (
     DisabledModelProvider,
     ModelHealth,
     ModelUnavailable,
-    OllamaModelProvider,
+    VllmModelProvider,
     get_model_provider,
 )
 from hope_job_agent.ai.ranking import (
@@ -208,7 +208,7 @@ def _match_state(**overrides: Any) -> dict[str, Any]:
     return state
 
 
-def test_match_graph_survives_ollama_outage() -> None:
+def test_match_graph_survives_local_model_outage() -> None:
     graph = build_match_generation_graph(DisabledModelProvider())
     result = graph.invoke(_match_state())
     assert result["degraded"] is True
@@ -663,272 +663,187 @@ def test_future_source_contract_fixtures_normalize_provenance() -> None:
     assert post["raw_metadata"]["actor_run_id"] == "actor-run-1"
 
 
-def _provider_with_tags(
-    tags: dict[str, Any],
+def _vllm_provider(
     *,
-    chat_model: str = "gpt-oss:120b",
+    chat_models: list[str] | None = None,
+    embedding_model: str = "google/embeddinggemma-300m",
+    served_embedding_model: str | None = None,
     embedding_width: int | None = None,
     **kwargs: Any,
-) -> OllamaModelProvider:
-    """Build a provider whose HTTP calls are served by an in-memory transport.
+) -> VllmModelProvider:
+    """Build a vLLM/TEI provider backed by an in-memory transport."""
 
-    ``embedding_width`` defaults to the configured pgvector width so a healthy
-    provider stays healthy; pass a different value to simulate an embedding
-    model that disagrees with ``EMBEDDING_DIMENSION``.
-    """
-
+    models = chat_models or ["openai/gpt-oss-120b"]
     width = embedding_dimension() if embedding_width is None else embedding_width
+    served_embedding = served_embedding_model or embedding_model
 
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.path == "/api/tags":
-            return httpx.Response(200, json=tags)
-        if request.url.path == "/api/embed":
-            return httpx.Response(200, json={"embeddings": [[0.1] * width]})
+        if request.url.path == "/v1/models" and request.method == "GET":
+            return httpx.Response(200, json={"data": [{"id": item} for item in models]})
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        if request.url.path == "/info":
+            return httpx.Response(200, json={"model_id": served_embedding})
+        if request.url.path == "/v1/embeddings":
+            body = json.loads(request.content)
+            inputs = body["input"]
+            return httpx.Response(
+                200,
+                json={
+                    "data": [
+                        {"index": index, "embedding": [0.1] * width}
+                        for index, _ in enumerate(inputs)
+                    ],
+                    "usage": {
+                        "prompt_tokens": len(inputs),
+                        "total_tokens": len(inputs),
+                    },
+                },
+            )
         return httpx.Response(
-            200, json={"message": {"content": request.content.decode()}}
+            200,
+            json={
+                "choices": [{"message": {"content": "ok"}}],
+                "usage": {"prompt_tokens": 70, "completion_tokens": 22},
+            },
         )
 
-    provider = OllamaModelProvider(
-        "http://ollama:11434", chat_model, "embeddinggemma", **kwargs
+    provider = VllmModelProvider(
+        "http://vllm:8000",
+        "openai/gpt-oss-120b",
+        embedding_model,
+        embedding_base_url="http://embed:80",
+        **kwargs,
     )
     provider._client = httpx.Client(transport=httpx.MockTransport(handler))
     return provider
 
 
-def test_health_reports_unavailable_when_the_chat_model_is_not_pulled() -> None:
-    """A typo in OLLAMA_CHAT_MODEL must not read as a healthy deployment.
-
-    /api/tags answers fine in this case; only the model name is wrong, which
-    is exactly the misconfiguration that used to report available: true while
-    every real call failed.
-    """
-
-    provider = _provider_with_tags(
-        {"models": [{"name": "gpt-oss:20b"}, {"name": "embeddinggemma:latest"}]}
-    )
+def test_health_reports_unavailable_when_chat_model_is_not_served() -> None:
+    provider = _vllm_provider(chat_models=["another/model"])
     health = provider.health()
     assert health.available is False
-    assert "gpt-oss:120b" in (health.detail or "")
+    assert "openai/gpt-oss-120b" in (health.detail or "")
 
 
-def test_health_reports_unavailable_when_the_embedding_model_is_missing() -> None:
-    provider = _provider_with_tags({"models": [{"name": "gpt-oss:120b"}]})
+def test_health_reports_unavailable_when_tei_serves_wrong_model() -> None:
+    provider = _vllm_provider(served_embedding_model="BAAI/bge-base-en-v1.5")
     health = provider.health()
     assert health.available is False
-    assert "embeddinggemma" in (health.detail or "")
+    assert "google/embeddinggemma-300m" in (health.detail or "")
 
 
-def test_health_is_available_when_both_models_are_installed() -> None:
-    """``embeddinggemma`` must match the server's ``embeddinggemma:latest``."""
-
-    provider = _provider_with_tags(
-        {"models": [{"name": "gpt-oss:120b"}, {"name": "embeddinggemma:latest"}]}
-    )
-    health = provider.health()
+def test_health_is_available_when_vllm_and_tei_are_ready() -> None:
+    health = _vllm_provider().health()
     assert health.available is True
-    assert health.model == "gpt-oss:120b"
-    assert health.embedding_model == "embeddinggemma"
+    assert health.model == "openai/gpt-oss-120b"
+    assert health.embedding_model == "google/embeddinggemma-300m"
 
 
-def test_health_reports_unavailable_when_the_embedding_width_is_wrong() -> None:
-    """A pulled-but-wrong embedding model must not read as healthy.
-
-    EMBEDDING_DIMENSION and OLLAMA_EMBEDDING_MODEL are set independently, so
-    both can be individually plausible and still disagree. Without the probe
-    this deployment reported ready and silently stored no embeddings at all,
-    because every vector was discarded at write time.
-    """
-
-    provider = _provider_with_tags(
-        {"models": [{"name": "gpt-oss:120b"}, {"name": "embeddinggemma:latest"}]},
-        embedding_width=embedding_dimension() + 1,
-    )
+def test_health_reports_unavailable_when_embedding_width_is_wrong() -> None:
+    provider = _vllm_provider(embedding_width=embedding_dimension() + 1)
     health = provider.health()
     assert health.available is False
     assert str(embedding_dimension()) in (health.detail or "")
 
 
-def test_health_probes_the_embedding_model_only_once() -> None:
-    """The width is a property of the model, so repeated checks must not re-embed."""
-
+def test_health_probes_embedding_width_only_once() -> None:
     calls: list[str] = []
+    provider = _vllm_provider()
+    original_send = provider._client.send
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def recording_send(request: httpx.Request, *args: Any, **kwargs: Any):
         calls.append(request.url.path)
-        if request.url.path == "/api/tags":
-            return httpx.Response(
-                200,
-                json={
-                    "models": [
-                        {"name": "gpt-oss:120b"},
-                        {"name": "embeddinggemma:latest"},
-                    ]
-                },
-            )
-        return httpx.Response(200, json={"embeddings": [[0.1] * embedding_dimension()]})
+        return original_send(request, *args, **kwargs)
 
-    provider = OllamaModelProvider(
-        "http://ollama:11434", "gpt-oss:120b", "embeddinggemma"
-    )
-    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider._client.send = recording_send  # type: ignore[method-assign]
     assert provider.health().available is True
     assert provider.health().available is True
-    assert calls.count("/api/embed") == 1
+    assert calls.count("/v1/embeddings") == 1
 
 
-def test_chat_sends_the_configured_context_window_and_keep_alive() -> None:
-    """num_ctx must reach Ollama, which otherwise truncates long prompts."""
-
+def test_chat_sends_vllm_priority_reasoning_and_guided_schema() -> None:
     captured: dict[str, Any] = {}
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.update(json.loads(request.content))
-        return httpx.Response(200, json={"message": {"content": "ok"}})
-
-    provider = OllamaModelProvider(
-        "http://ollama:11434",
-        "gpt-oss:120b",
-        num_ctx=32768,
-        keep_alive="2h",
-    )
-    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
-    provider.chat([{"role": "user", "content": "hi"}])
-
-    assert captured["options"]["num_ctx"] == 32768
-    assert captured["keep_alive"] == "2h"
-
-
-def test_chat_sends_the_configured_reasoning_effort() -> None:
-    """gpt-oss reasons whether or not anyone reads it.
-
-    chat() returns message.content and discards message.thinking, so on the
-    extraction paths those tokens are decode time spent on output nothing sees.
-    This is the dial that bounds them, and it has to reach the server.
-    """
-
-    captured: dict[str, Any] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured.update(json.loads(request.content))
-        return httpx.Response(200, json={"message": {"content": "ok"}})
-
-    provider = OllamaModelProvider(
-        "http://ollama:11434", "gpt-oss:120b", reasoning="low"
-    )
-    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
-    provider.chat([{"role": "user", "content": "hi"}])
-
-    assert captured["think"] == "low"
-
-
-def test_chat_omits_the_reasoning_key_when_unset() -> None:
-    """An unset effort must leave the model's own default alone."""
-
-    captured: dict[str, Any] = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        captured.update(json.loads(request.content))
-        return httpx.Response(200, json={"message": {"content": "ok"}})
-
-    provider = OllamaModelProvider("http://ollama:11434", "gpt-oss:120b")
-    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
-    provider.chat([{"role": "user", "content": "hi"}])
-
-    assert "think" not in captured
-
-
-def test_chat_records_the_token_counters_ollama_returns() -> None:
-    """These counters are the only way to tell a busy GPU from an idle one."""
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        del request
         return httpx.Response(
             200,
             json={
-                "message": {"content": "ok"},
-                "prompt_eval_count": 70,
-                "eval_count": 22,
-                "eval_duration": 500_000_000,
-                "load_duration": 0,
+                "choices": [{"message": {"content": "{}"}}],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
             },
         )
 
-    provider = OllamaModelProvider("http://ollama:11434", "counted-model")
+    provider = _vllm_provider(
+        reasoning="low", max_tokens=512, priority=-10, max_parallel=4
+    )
     provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+    schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
+    provider.chat([{"role": "user", "content": "hi"}], schema=schema)
 
-    labels = ("counted-model", WORKLOAD_BATCH, "chat")
+    assert captured["model"] == "openai/gpt-oss-120b"
+    assert captured["max_tokens"] == 512
+    assert captured["priority"] == -10
+    assert captured["reasoning_effort"] == "low"
+    assert captured["response_format"]["json_schema"]["strict"] is True
+    assert captured["request_id"].startswith("hope-")
+
+
+def test_chat_omits_reasoning_when_unset() -> None:
+    captured: dict[str, Any] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.update(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "ok"}}], "usage": {}},
+        )
+
+    provider = _vllm_provider()
+    provider._client = httpx.Client(transport=httpx.MockTransport(handler))
+    provider.chat([{"role": "user", "content": "hi"}])
+    assert "reasoning_effort" not in captured
+
+
+def test_chat_records_openai_usage_counters() -> None:
+    provider = _vllm_provider()
+    labels = ("openai/gpt-oss-120b", WORKLOAD_BATCH, "chat")
     before = telemetry.GENERATED_TOKENS.labels(*labels)._value.get()
     provider.chat([{"role": "user", "content": "hi"}])
     after = telemetry.GENERATED_TOKENS.labels(*labels)._value.get()
-
     assert after - before == 22
 
 
-def test_interactive_workload_gets_its_own_window_and_reasoning() -> None:
-    """The coach's smaller window is what pays for the batch model's slots.
-
-    Every parallel decode slot reserves KV cache sized from num_ctx, so this is
-    a memory-budget setting, not a per-request preference.
-    """
-
+def test_workloads_share_model_but_have_separate_priority_and_budgets() -> None:
     settings = PlatformSettings(
-        ollama_base_url="http://ollama:11434",
-        ollama_chat_model="gpt-oss:120b",
-        ollama_interactive_model="gpt-oss:20b",
-        ollama_num_ctx=16384,
-        ollama_interactive_num_ctx=8192,
-        ollama_batch_reasoning="low",
-        ollama_interactive_reasoning="medium",
+        vllm_base_url="http://vllm:8000",
+        vllm_chat_model="openai/gpt-oss-120b",
+        embedding_base_url="http://embed:80",
+        vllm_max_tokens=2048,
+        vllm_interactive_max_tokens=768,
+        vllm_batch_reasoning="low",
+        vllm_interactive_reasoning="medium",
+        vllm_batch_concurrency=4,
+        vllm_batch_priority=0,
+        vllm_interactive_priority=-10,
     )
     with _patched_settings(settings):
         batch = get_model_provider(WORKLOAD_BATCH)
         interactive = get_model_provider(WORKLOAD_INTERACTIVE)
 
-    assert (batch.num_ctx, batch.reasoning) == (16384, "low")
-    assert (interactive.num_ctx, interactive.reasoning) == (8192, "medium")
-
-
-def test_interactive_window_falls_back_to_the_shared_one_when_unset() -> None:
-    settings = PlatformSettings(
-        ollama_base_url="http://ollama:11434",
-        ollama_chat_model="gpt-oss:120b",
-        ollama_num_ctx=16384,
-        ollama_interactive_num_ctx=0,
+    assert batch.chat_model == interactive.chat_model == "openai/gpt-oss-120b"
+    assert (batch.max_tokens, batch.priority, batch.max_parallel) == (2048, 0, 4)
+    assert (interactive.max_tokens, interactive.priority, interactive.max_parallel) == (
+        768,
+        -10,
+        1,
     )
-    with _patched_settings(settings):
-        interactive = get_model_provider(WORKLOAD_INTERACTIVE)
-    assert interactive.num_ctx == 16384
+    assert (batch.reasoning, interactive.reasoning) == ("low", "medium")
 
 
-def test_interactive_workload_selects_the_smaller_model() -> None:
-    """The coach and the batch queues must resolve to different models."""
-
-    settings = PlatformSettings(
-        ollama_base_url="http://ollama:11434",
-        ollama_chat_model="gpt-oss:120b",
-        ollama_interactive_model="gpt-oss:20b",
-    )
-    with _patched_settings(settings):
-        batch = get_model_provider(WORKLOAD_BATCH)
-        interactive = get_model_provider(WORKLOAD_INTERACTIVE)
-    assert batch.chat_model == "gpt-oss:120b"
-    assert interactive.chat_model == "gpt-oss:20b"
-
-
-def test_interactive_falls_back_to_the_batch_model_when_unset() -> None:
-    """A single-model deployment needs no extra configuration."""
-
-    settings = PlatformSettings(
-        ollama_base_url="http://ollama:11434",
-        ollama_chat_model="gpt-oss:120b",
-    )
-    with _patched_settings(settings):
-        interactive = get_model_provider(WORKLOAD_INTERACTIVE)
-    assert interactive.chat_model == "gpt-oss:120b"
-
-
-def test_unconfigured_endpoint_still_yields_the_disabled_provider() -> None:
-    with _patched_settings(PlatformSettings(ollama_base_url="", ollama_chat_model="")):
+def test_unconfigured_endpoint_still_yields_disabled_provider() -> None:
+    with _patched_settings(PlatformSettings(vllm_base_url="", vllm_chat_model="")):
         assert isinstance(get_model_provider(), DisabledModelProvider)
 
 
@@ -943,55 +858,22 @@ def test_health_and_openapi_are_available_without_local_ai() -> None:
     assert "/internal/v1/webhooks/apify" in schema["paths"]
 
 
-def test_readiness_reports_the_interactive_model_separately() -> None:
-    """A typo in the coach's model must not hide behind a healthy batch model.
-
-    Checking only the batch provider left the whole coach path unmonitored,
-    which is the same "reports available while every call fails" failure the
-    per-model check was added to catch.
-    """
-
+def test_readiness_checks_shared_model_once() -> None:
     settings = PlatformSettings(
-        ollama_base_url="http://ollama:11434",
-        ollama_chat_model="gpt-oss:120b",
-        ollama_interactive_model="gpt-oss:20b-typo",
+        vllm_base_url="http://vllm:8000",
+        vllm_chat_model="openai/gpt-oss-120b",
+        embedding_base_url="http://embed:80",
     )
     with _patched_settings(settings):
         with patch.object(
-            OllamaModelProvider,
+            VllmModelProvider,
             "health",
             autospec=True,
-            side_effect=lambda self: ModelHealth(
-                self.chat_model == "gpt-oss:120b",
-                "ollama",
-                self.chat_model,
-                None if self.chat_model == "gpt-oss:120b" else "model not pulled",
-            ),
-        ):
+            side_effect=lambda self: ModelHealth(True, "vllm", self.chat_model),
+        ) as health:
             payload = TestClient(app).get("/health/ready").json()
 
-    assert set(payload["workloads"]) == {WORKLOAD_BATCH, WORKLOAD_INTERACTIVE}
-    assert payload["workloads"][WORKLOAD_BATCH]["available"] is True
-    assert payload["workloads"][WORKLOAD_INTERACTIVE]["available"] is False
-    assert payload["degraded"] is True
-
-
-def test_readiness_does_not_double_check_a_single_model_deployment() -> None:
-    """Interactive resolves to the batch model, so there is nothing extra to probe."""
-
-    settings = PlatformSettings(
-        ollama_base_url="http://ollama:11434",
-        ollama_chat_model="gpt-oss:120b",
-    )
-    with _patched_settings(settings):
-        with patch.object(
-            OllamaModelProvider,
-            "health",
-            autospec=True,
-            side_effect=lambda self: ModelHealth(True, "ollama", self.chat_model),
-        ):
-            payload = TestClient(app).get("/health/ready").json()
-
+    assert health.call_count == 1
     assert set(payload["workloads"]) == {WORKLOAD_BATCH}
     assert payload["degraded"] is False
 

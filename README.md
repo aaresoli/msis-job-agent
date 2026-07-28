@@ -8,29 +8,28 @@ privacy controls, GCS aggregate analytics, automation, and a mobile-first web ap
 
 ## Current Status
 
-The platform is ready for local deployment and external endpoint mapping. Local
-Ollama inference is wired end to end and enabled by pointing `OLLAMA_BASE_URL`
-and `OLLAMA_CHAT_MODEL` at a running server — see
+The platform is ready for local deployment and external endpoint mapping. Local inference is wired end to end through one continuously batched vLLM
+GPT-OSS engine and a CPU TEI EmbeddingGemma service — see
 [the DGX Spark runbook](docs/dgx_spark_deployment.md) for the model choices and
 why they are MoE. Live Denodo and Apify LinkedIn calls remain disabled until
 their credentials, payload fixtures, and approvals are supplied. The existing
 SQLite CLI remains available for offline demos; the web platform uses
-PostgreSQL and pgvector.
+PostgreSQL and pgvector. Hosted model APIs are not used.
 
 The current code provides:
 
 - FastAPI `/api/v1` student/GCS API with invite-only magic links, CSRF,
   role checks, sharing grants, audit records, export, and deletion requests
 - PostgreSQL/pgvector system of record plus private MinIO documents and Redis
-  queues, with 768-dimensional `embeddinggemma` metadata
+  queues, with 768-dimensional `google/embeddinggemma-300m` metadata
 - Four LangGraph workflows for enrichment, hybrid matching, advisory coaching,
   and cited Market Pulse signals, with optional PostgreSQL checkpointing
-- Provider-neutral local inference with an Ollama implementation and graceful
-  deterministic/vector fallback, tuned for concurrent decode on the Spark
-  (parallel slots, KV quantization, per-workload context and reasoning effort)
-- Per-call inference telemetry — prompt/generated tokens, decode seconds, and
-  model-load seconds — exported as Prometheus counters and structured logs, so
-  throughput and model eviction are observable rather than inferred
+- Provider-neutral local inference with a vLLM OpenAI-compatible implementation
+  and graceful fallback, tuned for continuous batching, chunked prefill, prefix
+  caching, structured JSON output, and priority-scheduled coach traffic
+- Per-call token/outcome telemetry plus native vLLM/TEI Prometheus metrics and
+  a provisioned Grafana dashboard for latency, queueing, KV pressure, throughput,
+  preemptions, and availability
 - Separate interactive and batch Celery queues
 - A Celery Beat scheduler whose schedule is declared in Python
   (`src/hope_job_agent/workers/schedules.py`), on by default with the platform
@@ -123,7 +122,7 @@ docker compose --profile platform --profile observability up -d
 
 Only add `--profile edge` after configuring the Caddy host and a Cloudflare
 tunnel token. Phoenix, Grafana, Prometheus, Alertmanager, MinIO, PostgreSQL,
-Redis, and Ollama bind privately or to loopback and must not be added to the
+Redis, vLLM, and TEI bind privately or to loopback and must not be added to the
 public tunnel.
 
 The schedule lives in `src/hope_job_agent/workers/schedules.py` and is covered

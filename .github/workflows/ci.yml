@@ -31,6 +31,12 @@ jobs:
       EMBEDDING_DIMENSION: "768"
     steps:
       - uses: actions/checkout@v4
+      - name: Compose profiles are valid
+        run: |
+          touch "$RUNNER_TEMP/hf_token"
+          HF_TOKEN_FILE="$RUNNER_TEMP/hf_token" \
+            docker compose --profile platform --profile ai \
+            --profile observability config --quiet
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.14"

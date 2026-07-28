@@ -89,28 +89,38 @@ groups:
           summary: "Celery queue {{ $labels.queue }} has {{ $value }} pending tasks"
 
       # --- Local inference ----------------------------------------------
-      # Sustained model loading means Ollama is evicting between requests: the
-      # 120b takes minutes to load, so this converts almost all GPU time into
-      # waiting. Usually OLLAMA_MAX_LOADED_MODELS being below the number of
-      # distinct models in use.
-      - alert: HopeModelThrashing
-        expr: rate(hope_llm_load_seconds_total[15m]) > 0.1
-        for: 15m
-        labels: { severity: warning }
-        annotations:
-          summary: "Ollama is reloading {{ $labels.model }} repeatedly"
-          description: >-
-            Over 10% of wall-clock time is going to model loads. Check
-            OLLAMA_MAX_LOADED_MODELS and OLLAMA_KEEP_ALIVE.
-
       - alert: HopeInferenceFailing
         expr: >-
-          sum(rate(hope_llm_requests_total{outcome!="success"}[10m]))
+          sum(rate(hope_llm_requests_total{outcome="error"}[10m]))
           / clamp_min(sum(rate(hope_llm_requests_total[10m])), 0.001) > 0.25
         for: 10m
         labels: { severity: warning }
         annotations:
           summary: "Over a quarter of local model calls are failing"
+
+      - alert: HopeVllmPreempting
+        expr: increase(vllm:num_preemptions_total[10m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "vLLM is preempting requests under memory pressure"
+          description: >-
+            Reduce max-num-seqs, max-num-batched-tokens, or context length if
+            this persists. Preemption adds recomputation and latency.
+
+      - alert: HopeVllmKvCachePressure
+        expr: vllm:kv_cache_usage_perc > 0.95
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "vLLM KV cache has remained above 95%"
+
+      - alert: HopeVllmQueueBacklog
+        expr: vllm:num_requests_waiting > 8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "vLLM has {{ $value }} requests waiting"
 
       # --- API ----------------------------------------------------------
       - alert: HopeApiErrors

@@ -22,16 +22,13 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from hope_job_agent.ai.embeddings import query_embedding_text
 from hope_job_agent.ai.provider import ModelProvider, ModelUnavailable
 from hope_job_agent.config.database import embedding_dimension
 from hope_job_agent.db.models import JobMatchRecord, JobPostingRecord
 from hope_job_agent.db.platform_models import ApplicationRecord, MarketSignal
 from hope_job_agent.persistence.embedding_repository import EmbeddingRepository
 from hope_job_agent.platform.settings import get_platform_settings
-
-# Mirrors EMBED_QUERY_PREFIX in workers.tasks: embeddinggemma is trained with
-# task prefixes and does not apply them itself, and a question is a query.
-EMBED_QUERY_PREFIX = "task: search result | query: "
 
 TOP_MATCHES = 8
 RETRIEVED_JOBS = 6
@@ -138,7 +135,7 @@ def _semantically_similar_jobs(
 
     settings = get_platform_settings()
     try:
-        vectors = provider.embed([EMBED_QUERY_PREFIX + question])
+        vectors = provider.embed([query_embedding_text(question)])
     except ModelUnavailable:
         return []
     if not vectors or len(vectors[0]) != embedding_dimension():
@@ -147,7 +144,7 @@ def _semantically_similar_jobs(
         vectors[0],
         filters={"status": "active"},
         limit=RETRIEVED_JOBS + len(exclude),
-        embedding_model=settings.ollama_embedding_model,
+        embedding_model=settings.embedding_model,
     )
     retrieved: list[dict[str, Any]] = []
     for job, similarity in results:

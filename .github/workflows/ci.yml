@@ -37,7 +37,7 @@ jobs:
           HF_TOKEN_FILE="$RUNNER_TEMP/hf_token" \
             docker compose --profile platform --profile ai \
             --profile observability config --quiet
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
           enable-cache: true

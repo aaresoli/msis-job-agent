@@ -345,11 +345,38 @@ services:
 
   # One continuously batched GPT-OSS engine serves batch and coach traffic.
   # Priority scheduling reserves responsiveness without loading a second model.
+  #
+  # MEMORY, AND WHY THE NUMBERS BELOW ARE WHAT THEY ARE.
+  # The Spark has no discrete VRAM: GB10's 128GB LPDDR5X is *unified*, so every
+  # byte vLLM reserves is a byte taken from the host. `nvidia-smi` reports
+  # memory.total as [N/A] here for exactly that reason, which also means a GPU
+  # over-reservation does not fail the container — it takes the machine down.
+  # That is not hypothetical: at 0.82 this loaded all 60.77GiB of weights and
+  # then hard-killed the box (exit 128) at KV-cache allocation, three times.
+  #
+  # Budget against ~119.7GiB visible to CUDA:
+  #   0.62 * 119.7  = 74.2GiB ceiling for vLLM
+  #   - 60.8GiB       MXFP4 weights (measured, from the loader log)
+  #   - ~4GiB         activations, CUDA graphs, workspace
+  #   = ~9.4GiB       KV cache
+  # Working set needs far less than that ceiling. gpt-oss-120b alternates
+  # sliding (window 128) and full attention over 36 layers, so only the 18 full
+  # layers scale with context: 18 * 2 * 8 kv-heads * 64 dim * 2B = 36KiB/token.
+  # At max_model_len 16384 that is 576MiB/sequence, so max_num_seqs 8 needs
+  # 4.6GiB. The remaining ~4.8GiB is prefix-cache headroom, which is where the
+  # surplus actually earns its keep.
+  #
+  # This leaves ~45GiB for the host. 0.82 left ~21GiB and spent the difference
+  # on KV cache that max_num_seqs could never allocate — it bought nothing and
+  # cost the machine. Raise this only with `free -g` open, and never past 0.70.
   vllm:
     image: ${VLLM_IMAGE:-nvcr.io/nvidia/vllm:26.06-py3}
     profiles: ["ai"]
     gpus: all
-    shm_size: 16gb
+    # Single-GPU, tensor_parallel_size=1: /dev/shm is only used for worker
+    # handoff, not weights. 16gb was headroom for a sharded setup that does not
+    # exist here, and on unified memory an oversized tmpfs is host RAM at risk.
+    shm_size: 2gb
     environment:
       HF_HOME: /root/.cache/huggingface
     entrypoint: ["/bin/sh", "-c"]
@@ -364,7 +391,7 @@ services:
           --max-model-len "${VLLM_MAX_MODEL_LEN:-16384}" \
           --max-num-seqs "${VLLM_MAX_NUM_SEQS:-8}" \
           --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS:-8192}" \
-          --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.82}" \
+          --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.62}" \
           --enable-prefix-caching \
           --enable-chunked-prefill \
           --scheduling-policy priority \
@@ -379,7 +406,12 @@ services:
       timeout: 10s
       start_period: 30m
       retries: 10
-    restart: unless-stopped
+    # NOT `unless-stopped`. A start that exhausts unified memory takes the host
+    # with it, and a restart policy then re-runs the 6-minute, 60GiB load into
+    # the same wall — that is how one bad setting became three crashes in a day.
+    # `on-failure:1` retries a genuinely transient failure once and then stays
+    # down, leaving the machine up and the loader log intact to read.
+    restart: on-failure:1
 
   # EmbeddingGemma runs on the ARM64 CPU TEI image, preserving GPU memory and
   # the existing 768-d pgvector schema.
@@ -402,6 +434,11 @@ services:
           --max-batch-tokens "${TEI_MAX_BATCH_TOKENS:-16384}"
     volumes: ["hope_huggingface:/data"]
     secrets: [hf_token]
+    # Runs on the CPU, so this is ordinary host RAM competing with vLLM's
+    # unified allocation. 300M params at float32 is ~1.2GiB resident; 6g covers
+    # that plus a full 16384-token batch and caps the blast radius if a large
+    # client batch lands while the engine is loading weights.
+    mem_limit: 6g
     ports: ["127.0.0.1:${EMBEDDING_HOST_PORT:-8002}:80"]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:80/health"]

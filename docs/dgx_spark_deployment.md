@@ -152,8 +152,10 @@ preemptions, availability, and request failures.
 
 Change one group at a time and repeat the acceptance workload:
 
-1. If there is an OOM or preemption, lower `VLLM_GPU_MEMORY_UTILIZATION` from
-   `0.82` to `0.78`, then lower `VLLM_MAX_NUM_SEQS` from `8` to `6`.
+1. If there is an OOM or preemption, lower `VLLM_MAX_NUM_SEQS` from `8` to `6`
+   before touching `VLLM_GPU_MEMORY_UTILIZATION`. On this hardware the
+   utilization knob is a *host* memory knob, and raising it to buy back KV cache
+   is how the machine crashed on 2026-07-27 — see "Unified memory" below.
 2. If long prefills delay the coach, lower `VLLM_MAX_NUM_BATCHED_TOKENS` from
    `8192` to `4096`; keep chunked prefill and priority scheduling enabled.
 3. If the GPU is healthy but batch throughput is low, raise
@@ -165,6 +167,47 @@ Change one group at a time and repeat the acceptance workload:
    previous `low` experiment was faster but sent 3 additional posts per 40 to
    review, so batch defaults to the model setting and coach uses `medium`.
 
+## Unified memory: the one failure mode that takes the host down
+
+GB10 has no discrete VRAM. The 128GB LPDDR5X pool is shared by CPU and GPU, so
+`--gpu-memory-utilization` is not bounded by a separate device — it reserves
+host RAM. `nvidia-smi --query-gpu=memory.total` returns `[N/A]` here for that
+reason, so the usual "check VRAM" reflex gives you nothing.
+
+The consequence: an over-reservation does **not** surface as a CUDA OOM inside
+the container. The allocation succeeds against memory the host needs, the box
+starts thrashing, and the kernel logs `NVRM: ... Out of memory
+[NV_ERR_NO_MEMORY] ... _memdescAllocInternal` while the desktop session dies.
+The vLLM log simply ends — no traceback, container exit 128.
+
+What happened on 2026-07-27, at `VLLM_GPU_MEMORY_UTILIZATION=0.82`:
+
+```
+Checkpoint size: 60.77 GiB. Available RAM: 42.63 GiB.
+...
+Loading weights took 385.37 seconds     <- log ends here, machine down
+```
+
+The weights loaded; the process died at the *next* step, KV-cache allocation,
+which is where the utilization fraction is applied. Because the service was
+`restart: unless-stopped`, it re-ran the six-minute 60GiB load and killed the
+machine twice more (20:32, 07:56, 15:53). It is now `on-failure:1`.
+
+The current `0.62` is not a timid retreat from `0.82` — it is the measured
+requirement plus headroom. Only the 18 full-attention layers of gpt-oss-120b
+scale with context (the other 18 are sliding-window 128), giving
+36KiB/token, so `max_num_seqs=8` at 16384 context needs 4.6GiB of KV cache.
+`0.82` reserved roughly 28GiB that `max_num_seqs` made it structurally
+impossible to ever allocate, and took that 28GiB from the host to do it.
+
+Before any run that loads the engine, confirm the host actually has room —
+`Available RAM` in the loader log must exceed the checkpoint size:
+
+```bash
+free -g                      # want >100 GiB available before `up`
+docker compose ps            # observability + platform already resident?
+```
+
 ## Operations and security
 
 ```bash
@@ -174,9 +217,10 @@ curl -fsS http://127.0.0.1:8001/metrics | head
 # Engine and embedding logs
 docker compose logs --since 30m vllm embed
 
-# GPU/memory view
+# Memory view. NOTE: nvidia-smi reports [N/A] for memory on GB10 (unified),
+# so `free` is the real GPU memory view on this box, not nvidia-smi.
+free -g
 nvidia-smi
-free -h
 ```
 
 Model endpoints bind only to `127.0.0.1` on the host and remain private service
@@ -188,12 +232,15 @@ The systemd unit at `infra/systemd/hope-platform.service` starts platform, AI,
 observability, and development mail profiles after reboot and allows one hour
 for a cold model load.
 
-## Rollback and final Ollama cleanup
+## Rollback
 
-Keep the prior application image/release and Ollama volume during the acceptance
-window. If a gate fails, deploy the prior release configuration and point its
-application variables back to `http://ollama:11434`; the database is compatible,
-but re-index again because embedding spaces differ.
+Keep the prior application image/release during the acceptance window. If a gate
+fails, deploy the prior release configuration; the database is compatible, but
+re-index because embedding spaces differ.
+
+Ollama is fully removed — there is no `ollama` service, volume, or setting left
+to roll back to. Rolling back means an earlier application release, not an
+earlier inference engine.
 
 After all gates pass, remove orphaned Ollama containers with the normal Compose
 cutover:

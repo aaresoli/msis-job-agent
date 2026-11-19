@@ -17,6 +17,7 @@ from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.match import JobMatch
 from hope_job_agent.models.student import StudentProfile
 from hope_job_agent.scoring.ranker import RANKER_VERSION
+from hope_job_agent.storage.base import JobStoreError
 from hope_job_agent.utils.hashing import stable_hash
 from hope_job_agent.utils.url import canonicalize_url
 
@@ -25,8 +26,8 @@ _SQLITE_MEMORY_URL = "sqlite:///:memory:"
 _SQLITE_FILE_PREFIX = "sqlite:///"
 
 
-class SQLiteJobStoreError(RuntimeError):
-    """Raised when persistence cannot be configured or completed."""
+class SQLiteJobStoreError(JobStoreError):
+    """Raised when SQLite persistence cannot be configured or completed."""
 
 
 @dataclass(frozen=True)

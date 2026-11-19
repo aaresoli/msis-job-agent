@@ -29,10 +29,32 @@ LinkedIn access must use approved and compliant methods only. This repository in
 
 Handshake access requires official access/API approval before implementation. This repository includes only a placeholder stub.
 
+## Company Careers (public ATS boards)
+
+The `company_careers` source collects postings from **public** employer career
+pages and **public** ATS job-board APIs (Greenhouse, Lever, Ashby,
+SmartRecruiters, Workday). It is compliant by construction:
+
+- Public endpoints only; no login-gated or account-gated collection.
+- No LinkedIn/Handshake collection.
+- No CAPTCHA solving, login automation, proxy evasion, or access-control bypass.
+- Respects `robots.txt` (where applicable), rate limits, sends a clear
+  `User-Agent`, and logs fetch activity.
+- Treats HTTP 401/403/407/451 as the source blocking the crawler: it stops
+  fetching that source and marks it failed/blocked.
+- Stores raw provider payloads in `raw_metadata` for traceability.
+- Company list is configurable in `config/company_careers.yml`; brittle or
+  unsupported employers are left `enabled: false` rather than shipping flaky
+  collection. See `docs/company_careers.md`.
+
 ## Current Registry
 
 - `approved_json`: approved local export fixture.
 - `employer_careers`: approved realistic local fixture.
+- `company_careers`: approved public ATS/career-page source (see above).
+- `ksbit_export`: approved local JSON/CSV/XLSX export adapter for
+  KSBIT-compatible and 12Twenty/KelleyLink exports. It preserves source-row
+  context for auditability, excludes applicant/application analytics fields
+  from raw metadata, and does not use credentials or live collection.
 - `handshake`: restricted; blocked at runtime.
 - `linkedin_reference`: manual reference only; blocked at runtime.
-

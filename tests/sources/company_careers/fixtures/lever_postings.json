@@ -1,0 +1,35 @@
+[
+  {
+    "id": "lev-2001",
+    "text": "Business Systems Analyst, University Graduate",
+    "hostedUrl": "https://jobs.lever.co/acme/2001",
+    "applyUrl": "https://jobs.lever.co/acme/2001/apply",
+    "categories": {
+      "team": "Enterprise Technology",
+      "department": "IT",
+      "location": "Chicago, IL",
+      "commitment": "Full-time"
+    },
+    "workplaceType": "hybrid",
+    "descriptionPlain": "Support ERP and Salesforce enterprise applications and integrations.",
+    "lists": [
+      {"text": "Requirements", "content": "<li>SQL</li><li>New grad welcome</li>"}
+    ],
+    "createdAt": 1781049600000
+  },
+  {
+    "id": "lev-2002",
+    "text": "Registered Nurse",
+    "hostedUrl": "https://jobs.lever.co/acme/2002",
+    "applyUrl": "https://jobs.lever.co/acme/2002/apply",
+    "categories": {
+      "team": "Clinical",
+      "department": "Health",
+      "location": "Chicago, IL",
+      "commitment": "Full-time"
+    },
+    "workplaceType": "on-site",
+    "descriptionPlain": "Provide patient care in a clinical setting.",
+    "createdAt": 1780963200000
+  }
+]

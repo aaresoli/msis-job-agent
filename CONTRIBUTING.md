@@ -41,7 +41,7 @@ Do not push directly to `main`.
 
 ## Code Style
 
-- Python 3.11+
+- Python 3.14
 - Format with Black.
 - Lint with Ruff.
 - Keep type hints clear enough for mypy-friendly code.

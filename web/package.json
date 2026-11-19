@@ -1,0 +1,51 @@
+{
+  "name": "hope-career-intelligence-web",
+  "private": true,
+  "version": "0.2.0",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "generate:api": "openapi-typescript openapi.json -o lib/generated/api.d.ts"
+  },
+  "dependencies": {
+    "@fontsource/fraunces": "^5.1.1",
+    "@fontsource/source-sans-3": "^5.1.1",
+    "@radix-ui/react-dialog": "^1.1.4",
+    "framer-motion": "^11.15.0",
+    "lucide-react": "^0.468.0",
+    "next": "16.2.10",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@testing-library/react": "^16.1.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.0.3",
+    "@types/react-dom": "^19.0.2",
+    "eslint": "^9.39.2",
+    "eslint-config-next": "16.2.10",
+    "openapi-typescript": "7.13.0",
+    "postcss": "^8.5.20",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "4.1.10"
+  },
+  "//overrides": [
+    "Both entries patch a transitive dependency whose parent has not shipped a",
+    "bumped range yet. npm's own suggested fix for postcss is a downgrade to",
+    "next@9, which is not a fix. Drop each override once the parent moves.",
+    "js-yaml: GHSA-52cp-r559-cp3m via @redocly/openapi-core.",
+    "postcss: GHSA-qx2v-qp2m-jg93 via next."
+  ],
+  "overrides": {
+    "js-yaml": "^4.2.1",
+    "postcss": "$postcss"
+  }
+}

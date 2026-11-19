@@ -31,6 +31,17 @@ KSBIT-compatible local exports can use the same runner:
 python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input data/sample_ksbit_jobs.json --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results.csv
 ```
 
+For the top-level package CLI, `hope-job-agent run-pipeline --source
+ksbit_export` uses `KSBIT_EXPORT_PATH` when `--source-file` is omitted. The MVP
+runner keeps `--input` required so scheduled or demo runs remain explicit.
+
+Approved 12Twenty/KelleyLink `.xlsx` exports use the same `ksbit_export`
+source:
+
+```bash
+python -m hope_job_agent.pipeline.run_mvp --source ksbit_export --input "/path/to/12Twenty Data Example v1.xlsx" --profiles data/sample_profiles.json --output outputs/ksbit_mvp_results_xlsx.csv
+```
+
 ## What It Does
 
 The runner composes the Sprint 2 modules in this order:
@@ -71,7 +82,7 @@ For `approved_json`, job input must be an approved JSON export envelope:
       "location": "Bloomington, IN",
       "description": "Use SQL and Python to analyze business data.",
       "url": "https://example.com/jobs/data-analyst-intern",
-      "concentration_tags": ["Business Analytics"],
+      "concentration_tags": ["Data Analytics and AI"],
       "opt_cpt_flag": true
     }
   ]
@@ -83,8 +94,9 @@ Each job needs title, company, location, description, and one of `url`,
 `posted_date`, `employment_type`, `seniority`, `role_tags`,
 `concentration_tags`, `opt_cpt_flag`, and `raw_metadata`.
 
-For `ksbit_export`, job input can be a JSON list, wrapped JSON object, or CSV.
-See `docs/ksbit_export_adapter.md` for supported wrappers, required fields, and
+For `ksbit_export`, job input can be a JSON list, wrapped JSON object, CSV, or
+12Twenty/KelleyLink `.xlsx` export. See `docs/ksbit_export_adapter.md` for
+supported wrappers, required fields, status filtering, data minimization, and
 alias mappings.
 
 Profiles can be a JSON array or an object with a `profiles` array. Each profile
@@ -140,3 +152,7 @@ This runner is intentionally local-first. Add new sources only after registry
 metadata and approval review. Do not add scraping, login automation, session
 circumvention, CAPTCHA bypassing, proxy rotation, LinkedIn scraping, or
 Handshake login scraping.
+
+For `ksbit_export`, raw source row context is preserved in job `raw_metadata`
+for auditability, but applicant/application analytics fields are excluded and
+logs report counts/warnings rather than full source payloads.

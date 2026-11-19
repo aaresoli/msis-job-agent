@@ -16,7 +16,7 @@
       "description": "Use SQL, Python, and dashboards to analyze business data.",
       "url": "https://example.com/jobs/data-analyst-intern",
       "posted_date": "2026-05-20",
-      "concentration_tags": ["Business Analytics"],
+      "concentration_tags": ["Data Analytics and AI"],
       "opt_cpt_flag": true
     },
     {
@@ -26,7 +26,7 @@
       "description": "Support vulnerability review, risk analysis, and security reporting.",
       "url": "https://example.com/jobs/security-analyst-intern",
       "posted_date": "2026-05-22",
-      "concentration_tags": ["Cybersecurity"],
+      "concentration_tags": ["Cybersecurity and Risk Analytics"],
       "opt_cpt_flag": true
     },
     {
@@ -36,7 +36,7 @@
       "description": "Improve enterprise systems workflows and reporting for operations teams.",
       "url": "https://example.com/jobs/erp-systems-analyst",
       "posted_date": "2026-05-25",
-      "concentration_tags": ["Enterprise Systems"],
+      "concentration_tags": ["Digital Enterprise Systems and AI"],
       "opt_cpt_flag": null
     }
   ]

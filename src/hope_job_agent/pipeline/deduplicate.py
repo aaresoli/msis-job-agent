@@ -1,9 +1,12 @@
 """Deduplication helpers for normalized job postings."""
 
 from hope_job_agent.models.job import JobPosting
+from hope_job_agent.persistence.dedup import (
+    canonicalize_url,
+    compute_content_hash,
+    source_external_identity,
+)
 from hope_job_agent.pipeline.normalize import normalize_job
-from hope_job_agent.utils.hashing import stable_hash
-from hope_job_agent.utils.url import canonicalize_url
 
 
 def deduplicate_jobs(jobs: list[JobPosting]) -> list[JobPosting]:
@@ -47,15 +50,12 @@ def _job_signature(job: JobPosting) -> tuple[str, str, str, str]:
         job.title.casefold(),
         job.company.casefold(),
         job.location.casefold(),
-        stable_hash(" ".join(job.description.casefold().split())),
+        compute_content_hash(job),
     )
 
 
 def _source_job_id(job: JobPosting) -> tuple[str, str] | None:
-    value = job.source_job_id or job.raw_metadata.get("source_job_id")
-    if value is None:
+    identity = source_external_identity(job)
+    if identity is None:
         return None
-    normalized_value = str(value).strip()
-    if not normalized_value:
-        return None
-    return (job.source.casefold(), normalized_value.casefold())
+    return identity[0].casefold(), identity[1].casefold()

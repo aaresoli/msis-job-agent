@@ -1,0 +1,32 @@
+{
+  "jobs": [
+    {
+      "id": 1001,
+      "title": "Data Analyst Intern",
+      "updated_at": "{DAYS_AGO:3}T12:00:00-04:00",
+      "location": {"name": "Indianapolis, IN"},
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/1001",
+      "content": "&lt;p&gt;Build SQL dashboards in Tableau and Python for business teams.&lt;/p&gt;",
+      "departments": [{"name": "Data & Analytics"}]
+    },
+    {
+      "id": 1002,
+      "title": "Senior Director, Field Operations",
+      "updated_at": "{DAYS_AGO:4}T12:00:00-04:00",
+      "location": {"name": "Remote - US"},
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/1002",
+      "content": "&lt;p&gt;Lead field operations and P&amp;L across regions.&lt;/p&gt;",
+      "departments": [{"name": "Operations"}]
+    },
+    {
+      "id": 1003,
+      "title": "Warehouse Associate",
+      "updated_at": "{DAYS_AGO:5}T12:00:00-04:00",
+      "location": {"name": "Columbus, IN"},
+      "absolute_url": "https://boards.greenhouse.io/acme/jobs/1003",
+      "content": "&lt;p&gt;Pick, pack, and ship packages in the warehouse.&lt;/p&gt;",
+      "departments": [{"name": "Warehouse"}]
+    }
+  ],
+  "meta": {"total": 3}
+}

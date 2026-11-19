@@ -1,0 +1,40 @@
+global:
+  scrape_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+scrape_configs:
+  - job_name: hope-api
+    static_configs:
+      - targets: ["app:8000"]
+
+  # Every counter in hope_job_agent.ai.telemetry is incremented inside a Celery
+  # worker, not the API. Without these targets the batch queue -- where
+  # enrichment, embedding and matching actually run -- exported nothing, and the
+  # platform-health gauges sampled by hope.ops.export_metrics had no scraper at
+  # all. Each worker serves its multiprocess registry on :9100.
+  #
+  # beat is deliberately absent: it dispatches but executes nothing, and its
+  # liveness is proven by hope_beat_heartbeat_timestamp_seconds, which the ops
+  # worker sets when beat's heartbeat task arrives.
+  - job_name: hope-workers
+    static_configs:
+      - targets:
+          - "worker-interactive:9100"
+          - "worker-batch:9100"
+          - "worker-ingest:9100"
+          - "worker-ops:9100"
+
+  - job_name: vllm
+    static_configs:
+      - targets: ["vllm:8000"]
+
+  - job_name: embedding
+    static_configs:
+      - targets: ["embed:9000"]

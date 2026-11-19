@@ -1,0 +1,45 @@
+# Brings the platform up with the machine.
+#
+# Docker itself is enabled at boot on the Spark, but the compose stack was not,
+# so a reboot left the API, the workers and the scheduler down until someone
+# noticed and ran `docker compose up` by hand. Automation that does not survive
+# a power cycle is not automation.
+#
+# Install (adjust WorkingDirectory if the checkout lives elsewhere):
+#
+#   sudo cp infra/systemd/hope-platform.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hope-platform
+#   systemctl status hope-platform
+#
+# Edit the profile list below to match the deployment. `edge` is deliberately
+# absent: it publishes the stack through a Cloudflare tunnel and must be an
+# explicit decision, never something a reboot turns on.
+#
+# `dev` brings up the mailpit sink that SMTP_HOST points at on this box, so
+# digests and alert mail have somewhere to land. Drop it once SMTP_HOST names
+# a real relay.
+
+[Unit]
+Description=HOPE Career Intelligence platform
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/home/aashish/projects/msis-job-agent
+# Compose reads secrets from .env in WorkingDirectory. systemd does not run a
+# login shell, so anything expected from the user's profile must be set here.
+Environment=COMPOSE_PROJECT_NAME=hope-career-intelligence
+# Images are already built on the box; --build here would turn every reboot
+# into a rebuild, and a rebuild that fails would leave the platform down.
+ExecStart=/usr/bin/docker compose --profile platform --profile ai --profile observability --profile dev up -d --remove-orphans
+ExecStop=/usr/bin/docker compose --profile platform --profile ai --profile observability --profile dev stop
+# Downloading and loading GPT-OSS-120B on a cold Hugging Face cache can take
+# well beyond the default 90 seconds.
+TimeoutStartSec=3600
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+{
+  "id": "sr-4001",
+  "name": "Cloud Solutions Consultant (Associate)",
+  "jobAd": {
+    "sections": {
+      "jobDescription": {
+        "title": "Job Description",
+        "text": "<p>Advise clients on cloud migration and platform integration using AWS and Azure.</p>"
+      },
+      "qualifications": {
+        "title": "Qualifications",
+        "text": "<ul><li>SQL and Python</li><li>Consulting or implementation experience</li></ul>"
+      }
+    }
+  }
+}

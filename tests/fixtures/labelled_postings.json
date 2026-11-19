@@ -14,7 +14,7 @@
       "employment_type": "Internship",
       "opt_cpt_flag": true,
       "expected_role_tags": ["Data Analyst / BI Engineer"],
-      "expected_concentration_tags": ["Data Analytics and AI", "Information Systems Research in AI"],
+      "expected_concentration_tags": ["Data Analytics and AI", "IS Research"],
       "expected_seniority": "Entry",
       "expected_relevance": 3
     },
@@ -31,7 +31,7 @@
       "employment_type": "Internship",
       "opt_cpt_flag": true,
       "expected_role_tags": ["Cybersecurity Analyst"],
-      "expected_concentration_tags": ["Cybersecurity"],
+      "expected_concentration_tags": ["Cybersecurity and Risk Analytics"],
       "expected_seniority": "Entry",
       "expected_relevance": 3
     },
@@ -48,7 +48,7 @@
       "employment_type": "Full-time",
       "opt_cpt_flag": true,
       "expected_role_tags": ["Product / Project Manager"],
-      "expected_concentration_tags": ["Digital Transformation with AI"],
+      "expected_concentration_tags": ["Digital Enterprise Systems and AI"],
       "expected_seniority": "Early/Mid",
       "expected_relevance": 2
     },
@@ -65,9 +65,26 @@
       "employment_type": "Full-time",
       "opt_cpt_flag": null,
       "expected_role_tags": ["Data Analyst / BI Engineer"],
-      "expected_concentration_tags": ["Data Analytics and AI", "Information Systems Research in AI"],
+      "expected_concentration_tags": ["Data Analytics and AI", "IS Research"],
       "expected_seniority": "Early/Mid",
       "expected_relevance": 2
+    },
+    {
+      "id": "job-platform-security-1",
+      "title": "Platform Security Engineer Intern",
+      "company": "Meridian Cloud Platforms",
+      "location": "Indianapolis, IN",
+      "description": "Support secure cloud platform engineering with IAM, zero trust access, DevSecOps pipelines, Kubernetes hardening, and API security reviews.",
+      "source": "employer_careers",
+      "source_url": "https://careers.example.com/meridian/platform-security-engineer-intern",
+      "retrieval_date": "2026-06-05",
+      "posted_date": "2026-06-02",
+      "employment_type": "Internship",
+      "opt_cpt_flag": true,
+      "expected_role_tags": [],
+      "expected_concentration_tags": ["Digital Platforms and Security"],
+      "expected_seniority": "Entry",
+      "expected_relevance": 3
     }
   ],
   "sample_profiles": [
@@ -87,7 +104,7 @@
     {
       "profile": {
         "name": "Cybersecurity Fixture Student",
-        "concentration": "Cybersecurity",
+        "concentration": "Cybersecurity and Risk Analytics",
         "academic_stage": "Incoming student (Fall)",
         "target_roles": ["Cybersecurity Analyst"],
         "skills": ["NIST", "SIEM", "GRC"],
@@ -96,6 +113,19 @@
         "delivery_preference": "Daily or weekly email"
       },
       "expected_top_job_ids": ["job-cyber-risk-1"]
+    },
+    {
+      "profile": {
+        "name": "Platform Security Fixture Student",
+        "concentration": "Digital Platforms and Security",
+        "academic_stage": "Incoming student (Fall)",
+        "target_roles": ["Cybersecurity Analyst"],
+        "skills": ["IAM", "Kubernetes", "DevSecOps"],
+        "work_auth_status": "U.S. Citizen / Green Card",
+        "geo_preference": ["Midwest (Chicago, Indy, Cincy)"],
+        "delivery_preference": "Daily or weekly email"
+      },
+      "expected_top_job_ids": ["job-platform-security-1"]
     }
   ]
 }

@@ -1,13 +1,20 @@
 """Deterministic ranking helpers for student-job matching."""
 
+import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from pathlib import Path
+from typing import Any
 
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.models.match import JobMatch
 from hope_job_agent.models.student import StudentProfile
+from hope_job_agent.scoring.locations import resolve_location_match
 
 RANKER_VERSION = "deterministic-v0"
+DEFAULT_RANKING_WEIGHTS_PATH = (
+    Path(__file__).resolve().parents[3] / "data" / "ranking_weights.json"
+)
 
 
 @dataclass(frozen=True)
@@ -17,12 +24,64 @@ class RankingWeights:
     skill_match: float = 2.0
     target_role_match: float = 3.0
     concentration_match: float = 2.0
+    location_match: float = 1.0
     opt_cpt_match: float = 1.0
     seniority_match: float = 1.0
     seniority_mismatch_penalty: float = -1.0
 
 
 DEFAULT_RANKING_WEIGHTS = RankingWeights()
+
+
+class RankingWeightsConfigError(ValueError):
+    """Raised when a ranking-weights config file is invalid."""
+
+
+def load_ranking_weights(
+    path: str | Path = DEFAULT_RANKING_WEIGHTS_PATH,
+) -> RankingWeights:
+    """Load a ranking-weights config file into the ranker rubric."""
+
+    config_path = Path(path)
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RankingWeightsConfigError(
+            f"Ranking weights config is not valid JSON: {config_path}: {exc.msg}"
+        ) from exc
+    except OSError as exc:
+        raise RankingWeightsConfigError(
+            f"Ranking weights config could not be read: {config_path}: {exc}"
+        ) from exc
+
+    if not isinstance(payload, dict):
+        raise RankingWeightsConfigError(
+            f"Ranking weights config must be a JSON object: {config_path}"
+        )
+
+    weight_names = {field.name for field in fields(RankingWeights)}
+    payload_keys = set(payload)
+    missing_keys = sorted(weight_names - payload_keys)
+    extra_keys = sorted(payload_keys - weight_names)
+    if missing_keys or extra_keys:
+        details = []
+        if missing_keys:
+            details.append(f"missing={missing_keys}")
+        if extra_keys:
+            details.append(f"extra={extra_keys}")
+        raise RankingWeightsConfigError(
+            "Ranking weights config keys do not match the ranker rubric: "
+            + ", ".join(details)
+        )
+
+    try:
+        values = {key: float(payload[key]) for key in weight_names}
+    except (TypeError, ValueError) as exc:
+        raise RankingWeightsConfigError(
+            f"Ranking weights config values must be numeric: {config_path}"
+        ) from exc
+
+    return RankingWeights(**values)
 
 
 def _normalize_terms(values: list[str]) -> list[str]:
@@ -53,16 +112,31 @@ def explain_job_score(
     student: StudentProfile,
     job: JobPosting,
     weights: RankingWeights = DEFAULT_RANKING_WEIGHTS,
-) -> tuple[float, list[str], dict[str, str]]:
-    """Return an explainable score tuple for one student-job pair."""
+) -> tuple[float, list[str], dict[str, Any]]:
+    """Return an explainable score tuple for one student-job pair.
+
+    The ``reasons`` list is human-readable only. The numeric per-signal
+    contribution is returned separately under ``metadata["score_breakdown"]``
+    so downstream outputs can show an interpretable rubric without mixing the
+    two.
+    """
 
     searchable_text = f"{job.title} {job.description}".lower()
     score = 0.0
+    breakdown = {
+        "skill": 0.0,
+        "target_role": 0.0,
+        "concentration": 0.0,
+        "location": 0.0,
+        "opt_cpt": 0.0,
+        "seniority": 0.0,
+    }
     reasons: list[str] = []
 
     for skill in _normalize_terms(student.skills):
         if _contains_term(searchable_text, skill):
             score += weights.skill_match
+            breakdown["skill"] += weights.skill_match
             reasons.append(f"Skill match: {skill}")
 
     for role in _normalize_terms(student.target_roles):
@@ -70,26 +144,79 @@ def explain_job_score(
             tag.casefold() for tag in job.role_tags
         ]:
             score += weights.target_role_match
+            breakdown["target_role"] += weights.target_role_match
             reasons.append(f"Target role match: {role}")
 
     if student.concentration in job.concentration_tags:
         score += weights.concentration_match
+        breakdown["concentration"] += weights.concentration_match
         reasons.append(f"Concentration match: {student.concentration}")
+
+    location_matched, location_reason = _location_signal(student, job)
+    if location_matched and location_reason is not None:
+        score += weights.location_match
+        breakdown["location"] += weights.location_match
+        reasons.append(location_reason)
 
     if student.needs_cpt_opt and job.opt_cpt_flag is True:
         score += weights.opt_cpt_match
+        breakdown["opt_cpt"] += weights.opt_cpt_match
         reasons.append("CPT/OPT-friendly signal")
 
     seniority_label = job.seniority or infer_seniority(job)
     preferred_seniority = _preferred_seniority(student)
     if preferred_seniority and seniority_label == preferred_seniority:
         score += weights.seniority_match
+        breakdown["seniority"] += weights.seniority_match
         reasons.append(f"Seniority match: {seniority_label}")
     elif preferred_seniority and seniority_label:
         score += weights.seniority_mismatch_penalty
+        breakdown["seniority"] += weights.seniority_mismatch_penalty
         reasons.append(f"Seniority mismatch: {seniority_label}")
 
-    return score, reasons, {"seniority": seniority_label}
+    metadata: dict[str, Any] = {
+        "seniority": seniority_label,
+        "score_breakdown": breakdown,
+    }
+    return score, reasons, metadata
+
+
+def _is_remote_friendly(remote_preference: str | None) -> bool:
+    """Return whether a student is open to remote/online/hybrid work."""
+
+    if not remote_preference:
+        return False
+    normalized = remote_preference.casefold()
+    return any(term in normalized for term in ("remote", "online", "hybrid"))
+
+
+def _location_signal(
+    student: StudentProfile,
+    job: JobPosting,
+) -> tuple[bool, str | None]:
+    """Award a location signal only when it can be known confidently.
+
+    Returns a positive match for a remote-friendly student and a remote role,
+    or for a geo-preference term (expanded via nicknames/regions in
+    ``scoring.locations``) that appears in the posting location. Unknown
+    locations and unset preferences never score, so unknown data is not treated
+    as a match or a penalty.
+    """
+
+    location = job.location.strip()
+    if not location or location.casefold() == "not specified":
+        return False, None
+
+    if "remote" in location.casefold() and _is_remote_friendly(
+        student.remote_preference
+    ):
+        return True, "Remote-friendly role matches remote preference"
+
+    matched_term = resolve_location_match(location, student.geo_preference)
+    if matched_term is not None:
+        return True, f"Location match: {matched_term}"
+
+    return False, None
 
 
 def infer_seniority(job: JobPosting) -> str:
@@ -100,12 +227,12 @@ def infer_seniority(job: JobPosting) -> str:
     mid_terms = ["senior", "experienced"]
     entry_terms = ["intern", "internship", "new grad", "entry", "junior", "rotational"]
 
+    if any(_contains_term(searchable_text, term) for term in entry_terms):
+        return "Entry"
     if any(_contains_term(searchable_text, term) for term in senior_terms):
         return "Senior"
     if any(_contains_term(searchable_text, term) for term in mid_terms):
         return "Mid"
-    if any(_contains_term(searchable_text, term) for term in entry_terms):
-        return "Entry"
     return "Early/Mid"
 
 
@@ -132,14 +259,21 @@ def rank_jobs_for_student(
             JobMatch(job=job, score=score, reasons=reasons, metadata=metadata)
         )
 
-    return sorted(
-        matches,
-        key=lambda match: (
-            match.score,
-            match.job.posted_date is not None,
-            match.job.posted_date,
-            match.job.company,
-            match.job.title,
-        ),
-        reverse=True,
+    return sorted(matches, key=lambda match: _ranking_sort_key(student, match))
+
+
+def _ranking_sort_key(
+    student: StudentProfile, match: JobMatch
+) -> tuple[int, float, int, str, str]:
+    opt_priority = (
+        0 if not student.needs_cpt_opt or match.job.opt_cpt_flag is True else 1
+    )
+    posted_date = match.job.posted_date
+    date_priority = -posted_date.toordinal() if posted_date is not None else 0
+    return (
+        opt_priority,
+        -match.score,
+        date_priority,
+        match.job.company.casefold(),
+        match.job.title.casefold(),
     )

@@ -1,0 +1,133 @@
+groups:
+  - name: hope-platform
+    interval: 30s
+    rules:
+      # --- The scheduler ------------------------------------------------
+      # Beat has no health endpoint and no ping. Without this, a dead scheduler
+      # is indistinguishable from a quiet night: no crawls, no digests, and no
+      # alerts about their absence. The heartbeat task fires every minute, so
+      # five minutes of silence is unambiguous.
+      - alert: HopeBeatDown
+        expr: >-
+          absent(hope_beat_heartbeat_timestamp_seconds)
+          or (time() - max(hope_beat_heartbeat_timestamp_seconds)) > 300
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Scheduler is not dispatching"
+          description: >-
+            No beat heartbeat for over 5 minutes. Every scheduled job -- source
+            refresh, digests, backups, retention -- has stopped.
+
+      - alert: HopeServiceDown
+        expr: up == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.job }} target {{ $labels.instance }} is down"
+
+      # --- Backups ------------------------------------------------------
+      # Nightly at 01:00, so 36h means a window was missed entirely. An
+      # unverified backup is called out separately because it is the more
+      # dangerous state: it looks like protection and is not.
+      - alert: HopeBackupStale
+        expr: hope_backup_age_seconds > 129600
+        for: 30m
+        labels: { severity: critical }
+        annotations:
+          summary: "No verified backup in over 36 hours"
+
+      - alert: HopeBackupUnverified
+        expr: hope_backup_last_verified == 0
+        for: 30m
+        labels: { severity: critical }
+        annotations:
+          summary: "Latest backup did not restore cleanly"
+          description: >-
+            The most recent run either failed or its verification restore did
+            not produce the expected rows. Check backup_runs.error_summary.
+
+      # --- Outbox -------------------------------------------------------
+      # The relay runs every 30 seconds, so a backlog older than 15 minutes
+      # means it is failing rather than merely behind.
+      - alert: HopeOutboxBacklog
+        expr: hope_outbox_oldest_age_seconds > 900
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Outbox events are not being relayed"
+          description: >-
+            Oldest unpublished event is over 15 minutes old. Student digests
+            are queued but not being delivered.
+
+      - alert: HopeOutboxDeadLetters
+        expr: hope_outbox_dead_lettered > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} outbox events exhausted their retries"
+
+      # --- Sources ------------------------------------------------------
+      # Replaces the source-health-alerts workflow, which polled an endpoint
+      # and posted the result nowhere.
+      - alert: HopeSourceRefreshFailing
+        expr: hope_source_run_failures_24h > 0
+        for: 15m
+        labels: { severity: warning }
+        annotations:
+          summary: "{{ $value }} source runs failed in the last 24h"
+
+      # --- Queues -------------------------------------------------------
+      # Enrichment is GPU-bound and a refresh legitimately produces a deep
+      # batch queue, so this is tuned to catch a stalled consumer (depth that
+      # never drains) rather than a busy one.
+      - alert: HopeQueueBacklog
+        expr: hope_celery_queue_depth > 500
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Celery queue {{ $labels.queue }} has {{ $value }} pending tasks"
+
+      # --- Local inference ----------------------------------------------
+      - alert: HopeInferenceFailing
+        expr: >-
+          sum(rate(hope_llm_requests_total{outcome="error"}[10m]))
+          / clamp_min(sum(rate(hope_llm_requests_total[10m])), 0.001) > 0.25
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Over a quarter of local model calls are failing"
+
+      - alert: HopeVllmPreempting
+        expr: increase(vllm:num_preemptions_total[10m]) > 0
+        for: 5m
+        labels: { severity: warning }
+        annotations:
+          summary: "vLLM is preempting requests under memory pressure"
+          description: >-
+            Reduce max-num-seqs, max-num-batched-tokens, or context length if
+            this persists. Preemption adds recomputation and latency.
+
+      - alert: HopeVllmKvCachePressure
+        expr: vllm:kv_cache_usage_perc > 0.95
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "vLLM KV cache has remained above 95%"
+
+      - alert: HopeVllmQueueBacklog
+        expr: vllm:num_requests_waiting > 8
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "vLLM has {{ $value }} requests waiting"
+
+      # --- API ----------------------------------------------------------
+      - alert: HopeApiErrors
+        expr: >-
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          / clamp_min(sum(rate(http_requests_total[5m])), 0.001) > 0.05
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "Over 5% of API requests are returning 5xx"

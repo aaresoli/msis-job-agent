@@ -1,0 +1,4371 @@
+# Company Careers source configuration (public ATS job boards).
+#
+# This file drives the `company_careers` source. Graduate Career Services can
+# add, disable, or reprioritize employers here without editing Python.
+#
+# Compliance (see docs/company_careers.md and docs/compliance_notes.md):
+#   - Public employer career pages and public ATS APIs only.
+#   - No LinkedIn/Handshake or any logged-in/account-gated collection.
+#   - No CAPTCHA solving, login automation, proxy evasion, or access bypass.
+#   - Respect robots.txt, rate limit, and send a clear User-Agent.
+#   - A source that blocks the crawler is disabled automatically.
+#
+# Provider -> which field holds the ATS identifier:
+#   greenhouse       -> ats_slug = board token
+#   lever            -> ats_slug = site name
+#   ashby            -> ats_slug = job-board name
+#   smartrecruiters  -> ats_slug = company identifier
+#   workday          -> host + tenant + site
+#   oraclecloud      -> host + site (Candidate Experience site number, CX_*)
+#
+# LAMP coverage: every employer from the MSIS Consolidated Company LAMP List
+# 2025-26 ranks 1-300 (by "Student Interest #") appears below with
+# student_interest_rank/count and industry. Duplicate aliases are collapsed
+# into the best-ranked canonical entry, which lists the absorbed ranks in
+# merged_excel_ranks (109 "Slalom Consulting" -> 93 "Slalom"; 110 "TCS" -> 78
+# "Tata Consultancy Services"; 235 "Eli Lilly and Company" -> 16; 247
+# "Hewlett Packard Enterprise (HPE)" -> 142). Each entry is:
+#   - enabled: true  with verification_status: verified (live endpoint checked
+#     by scripts/research_lamp_companies.py on the verified_at date), or
+#   - enabled: false with verification_status pending/unsupported and a reason.
+# Re-run `python scripts/research_lamp_companies.py --live` to refresh the
+# coverage report (outputs/company_coverage_report.{json,md}).
+
+fetch_policy:
+  user_agent: "KelleyHOPE-MSIS-JobAgent/0.1 (+https://kelley.iu.edu; compliant public career-page reader)"
+  min_interval_seconds: 1.0
+  timeout_seconds: 15.0
+  max_retries: 2
+  backoff_seconds: 0.5
+  max_jobs_per_company: 200
+  # Companies are fetched in ascending priority order and the run stops once
+  # this total is reached, so later (higher-priority-number) companies are
+  # skipped when it is too low. Raised as tracked coverage grew (50 -> 150 ->
+  # 300 employers); raise further if health output shows the
+  # "max_total_jobs_per_run" warning.
+  max_total_jobs_per_run: 8000
+  respect_robots: true
+  fetch_descriptions: true
+
+# Keep score >= this to retain a posting (see relevance.py scoring).
+relevance_threshold: 3
+
+companies:
+  # ===========================================================================
+  # RANKS 1-50 MSIS LAMP LIST EMPLOYERS (ranked by Student Interest #)
+  # ===========================================================================
+
+  - company_name: "Deloitte"
+    ats_provider: static
+    careers_url: "https://apply.deloitte.com/"
+    enabled: false
+    priority: 1
+    student_interest_rank: 1
+    student_interest_count: 97
+    industry: "Professional Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom Avature-style portal (apply.deloitte.com); SmartRecruiters id
+      'DeloitteUS' returned 0 postings on 2026-07-08. No compliant public JSON
+      board identified.
+    notes: "Highest student interest; revisit if Deloitte exposes a public API or feed."
+
+  - company_name: "EY"
+    ats_provider: static
+    careers_url: "https://careers.ey.com/"
+    enabled: false
+    priority: 2
+    student_interest_rank: 2
+    student_interest_count: 92
+    industry: "Professional Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      SAP SuccessFactors portal (careers.ey.com); no unauthenticated public
+      JSON board. SuccessFactors OData APIs require customer credentials.
+
+  - company_name: "PwC"
+    ats_provider: workday
+    host: "pwc.wd3.myworkdayjobs.com"
+    tenant: pwc
+    site: Global_Experienced_Careers
+    careers_url: "https://www.pwc.com/us/en/careers.html"
+    enabled: true
+    priority: 3
+    student_interest_rank: 3
+    student_interest_count: 81
+    industry: "Accounting / Professional Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://pwc.wd3.myworkdayjobs.com/wday/cxs/pwc/Global_Experienced_Careers/jobs"
+    notes: "Global experienced-hire Workday board (4,392 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Accenture"
+    ats_provider: workday
+    host: "accenture.wd103.myworkdayjobs.com"
+    tenant: accenture
+    site: AccentureCareers
+    careers_url: "https://www.accenture.com/us-en/careers/jobsearch"
+    enabled: true
+    priority: 4
+    student_interest_rank: 4
+    student_interest_count: 77
+    industry: "Consulting / Technology Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://accenture.wd103.myworkdayjobs.com/wday/cxs/accenture/AccentureCareers/jobs"
+    notes: "Workday board discovered from public jobsearch page (2,000+ postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Amazon"
+    ats_provider: static
+    careers_url: "https://www.amazon.jobs/en/"
+    enabled: false
+    priority: 5
+    student_interest_rank: 5
+    student_interest_count: 70
+    industry: "E-commerce / Technology"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom amazon.jobs portal; no documented public job-board API. Internal
+      search JSON is undocumented and not an approved integration surface.
+
+  - company_name: "Google"
+    ats_provider: static
+    careers_url: "https://careers.google.com/"
+    enabled: false
+    priority: 6
+    student_interest_rank: 6
+    student_interest_count: 70
+    industry: "Technology / Internet Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom careers.google.com portal; no public job-board API for external
+      consumers.
+
+  - company_name: "KPMG US"
+    ats_provider: static
+    careers_url: "https://www.kpmguscareers.com/"
+    enabled: false
+    priority: 7
+    student_interest_rank: 7
+    student_interest_count: 70
+    industry: "Accounting / Professional Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom career portal; Lever slug 'kpmg-us' 404s and no public ATS
+      endpoint was detected on the careers site (2026-07-08).
+
+  - company_name: "Microsoft"
+    ats_provider: static
+    careers_url: "https://careers.microsoft.com/"
+    enabled: false
+    priority: 8
+    student_interest_rank: 8
+    student_interest_count: 65
+    industry: "Technology / Software"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom careers portal (gcsservices backend); no documented public
+      job-board API.
+
+  - company_name: "IBM"
+    ats_provider: static
+    careers_url: "https://www.ibm.com/careers/search"
+    enabled: false
+    priority: 9
+    student_interest_rank: 9
+    student_interest_count: 64
+    industry: "Technology / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom IBM careers portal; no public ATS JSON board detected
+      (2026-07-08).
+
+  - company_name: "Salesforce"
+    ats_provider: workday
+    host: "salesforce.wd12.myworkdayjobs.com"
+    tenant: salesforce
+    site: External_Career_Site
+    careers_url: "https://careers.salesforce.com/"
+    enabled: true
+    priority: 10
+    student_interest_rank: 10
+    student_interest_count: 64
+    industry: "Software / Customer Relationship Management (CRM)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://salesforce.wd12.myworkdayjobs.com/wday/cxs/salesforce/External_Career_Site/jobs"
+    notes: "Enterprise CRM/cloud/platform; solutions and business systems roles."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Boston Consulting Group"
+    ats_provider: static
+    careers_url: "https://careers.bcg.com/"
+    enabled: false
+    priority: 11
+    student_interest_rank: 11
+    student_interest_count: 59
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted portal without exposed Workday apply links; no public JSON
+      board detected (2026-07-08).
+
+  - company_name: "McKinsey & Company"
+    ats_provider: static
+    careers_url: "https://www.mckinsey.com/careers/search-jobs"
+    enabled: false
+    priority: 12
+    student_interest_rank: 12
+    student_interest_count: 59
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom careers portal; no public ATS JSON board detected (2026-07-08).
+
+  - company_name: "Oracle"
+    ats_provider: oraclecloud
+    host: "eeho.fa.us2.oraclecloud.com"
+    site: CX_45001
+    careers_url: "https://careers.oracle.com/en/sites/jobsearch"
+    enabled: true
+    priority: 13
+    student_interest_rank: 13
+    student_interest_count: 56
+    industry: "Software / Enterprise IT"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://eeho.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_45001,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Oracle Recruiting Cloud Candidate Experience API (2,071 postings)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Bain & Company"
+    ats_provider: static
+    careers_url: "https://www.bain.com/careers/find-a-role/"
+    enabled: false
+    priority: 14
+    student_interest_rank: 14
+    student_interest_count: 47
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom careers portal; no public ATS JSON board detected (2026-07-08).
+
+  - company_name: "Apple"
+    ats_provider: static
+    careers_url: "https://jobs.apple.com/"
+    enabled: false
+    priority: 15
+    student_interest_rank: 15
+    student_interest_count: 46
+    industry: "Consumer Electronics / Technology"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom jobs.apple.com portal; no public job-board API.
+
+  - company_name: "Eli Lilly and Company"
+    ats_provider: workday
+    host: "lilly.wd115.myworkdayjobs.com"
+    tenant: lilly
+    site: LLY
+    careers_url: "https://careers.lilly.com/"
+    enabled: true
+    priority: 16
+    student_interest_rank: 16
+    student_interest_count: 46
+    merged_excel_ranks: [235]
+    industry: "Pharmaceuticals / Biotechnology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://lilly.wd115.myworkdayjobs.com/wday/cxs/lilly/LLY/jobs"
+    notes: "Indiana/Kelley-relevant. Host corrected from wd5 to wd115 (739 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "SAP"
+    ats_provider: static
+    careers_url: "https://jobs.sap.com/"
+    enabled: false
+    priority: 17
+    student_interest_rank: 17
+    student_interest_count: 44
+    industry: "Software / Enterprise IT"
+    verification_status: unsupported
+    unsupported_reason: >-
+      SAP SuccessFactors portal (jobs.sap.com); no unauthenticated public JSON
+      board. SuccessFactors OData APIs require customer credentials.
+
+  - company_name: "JPMorgan Chase"
+    ats_provider: oraclecloud
+    host: "jpmc.fa.oraclecloud.com"
+    site: CX_1001
+    careers_url: "https://careers.jpmorgan.com/us/en/search-results"
+    enabled: true
+    priority: 18
+    student_interest_rank: 18
+    student_interest_count: 40
+    industry: "Financial Services / Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://jpmc.fa.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1001,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Oracle Recruiting Cloud Candidate Experience API (7,066 postings)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Meta"
+    ats_provider: static
+    careers_url: "https://www.metacareers.com/jobs"
+    enabled: false
+    priority: 19
+    student_interest_rank: 19
+    student_interest_count: 37
+    industry: "Technology / Social Media"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom metacareers.com portal; no public job-board API.
+
+  - company_name: "Cognizant"
+    ats_provider: workday
+    host: "cognizant.wd3.myworkdayjobs.com"
+    tenant: cognizant
+    site: CognizantCareers
+    careers_url: "https://careers.cognizant.com/global-en/jobs/"
+    enabled: false
+    priority: 20
+    student_interest_rank: 20
+    student_interest_count: 36
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Workday cxs endpoint returns 401 (blocked) for unauthenticated requests
+      (2026-07-08); per compliance rules a blocking source stays disabled.
+
+  - company_name: "Crowe"
+    ats_provider: workday
+    host: "crowe.wd12.myworkdayjobs.com"
+    tenant: crowe
+    site: External_Careers
+    careers_url: "https://www.crowe.com/careers"
+    enabled: true
+    priority: 21
+    student_interest_rank: 21
+    student_interest_count: 35
+    industry: "Accounting / Professional Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://crowe.wd12.myworkdayjobs.com/wday/cxs/crowe/External_Careers/jobs"
+    notes: "Advisory/audit tech hiring; strong technology risk fit (180 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Infosys"
+    ats_provider: static
+    careers_url: "https://www.infosys.com/careers/"
+    enabled: false
+    priority: 22
+    student_interest_rank: 22
+    student_interest_count: 33
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom careers portal; no public ATS JSON board detected (2026-07-08).
+
+  - company_name: "Cisco"
+    ats_provider: static
+    careers_url: "https://jobs.cisco.com/"
+    enabled: false
+    priority: 23
+    student_interest_rank: 23
+    student_interest_count: 31
+    industry: "Networking / Telecommunications"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted custom portal; no public JSON board or exposed Workday
+      apply links detected (2026-07-08).
+
+  - company_name: "Capgemini"
+    ats_provider: static
+    careers_url: "https://www.capgemini.com/careers/join-capgemini/job-search/"
+    enabled: false
+    priority: 24
+    student_interest_rank: 24
+    student_interest_count: 30
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom careers portal; no public ATS JSON board detected (2026-07-08).
+
+  - company_name: "Adobe"
+    ats_provider: workday
+    host: "adobe.wd5.myworkdayjobs.com"
+    tenant: adobe
+    site: external_experienced
+    careers_url: "https://careers.adobe.com/us/en/search-results"
+    enabled: true
+    priority: 25
+    student_interest_rank: 25
+    student_interest_count: 29
+    industry: "Software"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://adobe.wd5.myworkdayjobs.com/wday/cxs/adobe/external_experienced/jobs"
+    notes: "Workday experienced-hire board (961 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "NVIDIA"
+    ats_provider: workday
+    host: "nvidia.wd5.myworkdayjobs.com"
+    tenant: nvidia
+    site: NVIDIAExternalCareerSite
+    careers_url: "https://www.nvidia.com/en-us/about-nvidia/careers/"
+    enabled: true
+    priority: 26
+    student_interest_rank: 26
+    student_interest_count: 27
+    industry: "Semiconductors / AI"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs"
+    notes: "Workday external board (2,000+ postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Intel"
+    ats_provider: workday
+    host: "intel.wd1.myworkdayjobs.com"
+    tenant: intel
+    site: External
+    careers_url: "https://jobs.intel.com/"
+    enabled: true
+    priority: 27
+    student_interest_rank: 27
+    student_interest_count: 25
+    industry: "Semiconductors"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://intel.wd1.myworkdayjobs.com/wday/cxs/intel/External/jobs"
+    notes: "Workday external board (640 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Grant Thornton"
+    ats_provider: oraclecloud
+    host: "ehzq.fa.us2.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://www.grantthornton.com/careers"
+    enabled: true
+    priority: 28
+    student_interest_rank: 28
+    student_interest_count: 24
+    industry: "Accounting / Professional Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://ehzq.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Oracle CE endpoint discovered from public careers page (142 postings)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "ServiceNow"
+    ats_provider: smartrecruiters
+    ats_slug: ServiceNow
+    careers_url: "https://careers.servicenow.com/"
+    enabled: false
+    priority: 29
+    student_interest_rank: 29
+    student_interest_count: 24
+    industry: "Software / IT Service Management"
+    verification_status: unsupported
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.smartrecruiters.com/v1/companies/ServiceNow/postings?limit=1"
+    unsupported_reason: >-
+      The documented SmartRecruiters Posting API responds publicly (414
+      postings confirmed 2026-07-08), but api.smartrecruiters.com robots.txt
+      disallows all generic user agents and this pipeline respects robots.txt,
+      so the runtime auto-skips it. Needs a GCS policy decision (documented
+      partner API exemption) before enabling.
+    notes: "Identifier confirmed; blocked only by the robots.txt policy."
+
+  - company_name: "Bank of America"
+    ats_provider: static
+    careers_url: "https://careers.bankofamerica.com/en-us/job-search"
+    enabled: false
+    priority: 30
+    student_interest_rank: 30
+    student_interest_count: 23
+    industry: "Financial Services / Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Avature-based custom portal; the ghr.wd1.myworkdayjobs.com host seen in
+      page source exposes no public site usable for postings (2026-07-08).
+
+  - company_name: "Protiviti"
+    ats_provider: workday
+    host: "roberthalf.wd1.myworkdayjobs.com"
+    tenant: roberthalf
+    site: ProtivitiNA
+    careers_url: "https://www.protiviti.com/us-en/careers"
+    enabled: true
+    priority: 31
+    student_interest_rank: 31
+    student_interest_count: 23
+    industry: "Management Consulting / Risk Advisory"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://roberthalf.wd1.myworkdayjobs.com/wday/cxs/roberthalf/ProtivitiNA/jobs"
+    notes: "Hosted on parent Robert Half's Workday tenant, ProtivitiNA site (105 postings). Strong internal audit / technology risk fit."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "ZS Associates"
+    ats_provider: icims
+    careers_url: "https://jobs.zs.com/"
+    enabled: false
+    priority: 32
+    student_interest_rank: 32
+    student_interest_count: 23
+    industry: "Management Consulting / Life Sciences"
+    verification_status: unsupported
+    unsupported_reason: >-
+      iCIMS-hosted portal; the iCIMS Job Portal API requires a customer
+      partnership and there is no unauthenticated public JSON board.
+
+  - company_name: "Goldman Sachs"
+    ats_provider: static
+    careers_url: "https://higher.gs.com/roles"
+    enabled: false
+    priority: 33
+    student_interest_rank: 33
+    student_interest_count: 21
+    industry: "Financial Services / Investment Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom higher.gs.com portal; no public ATS JSON board detected
+      (2026-07-08).
+
+  - company_name: "Procter & Gamble"
+    ats_provider: workday
+    host: "pg.wd5.myworkdayjobs.com"
+    tenant: pg
+    site: "1000"
+    careers_url: "https://www.pgcareers.com/global/en/search-results"
+    enabled: true
+    priority: 34
+    student_interest_rank: 34
+    student_interest_count: 21
+    industry: "Consumer Packaged Goods"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://pg.wd5.myworkdayjobs.com/wday/cxs/pg/1000/jobs"
+    notes: "Workday board behind Phenom pgcareers.com pages (624 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Tesla"
+    ats_provider: static
+    careers_url: "https://www.tesla.com/careers/search/"
+    enabled: false
+    priority: 35
+    student_interest_rank: 35
+    student_interest_count: 21
+    industry: "Automotive / Manufacturing"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Custom tesla.com careers portal; no documented public job-board API.
+
+  - company_name: "Morgan Stanley"
+    ats_provider: static
+    careers_url: "https://www.morganstanley.com/careers/career-opportunities-search"
+    enabled: false
+    priority: 36
+    student_interest_rank: 36
+    student_interest_count: 20
+    industry: "Financial Services / Investment Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Eightfold-based custom portal; careers page timed out for the compliant
+      crawler and no public JSON board is documented (2026-07-08).
+
+  - company_name: "Dell Technologies"
+    ats_provider: workday
+    host: "dell.wd1.myworkdayjobs.com"
+    tenant: dell
+    site: External
+    careers_url: "https://jobs.dell.com/en/search-jobs"
+    enabled: false
+    priority: 37
+    student_interest_rank: 37
+    student_interest_count: 18
+    industry: "Technology / Hardware"
+    verification_status: pending
+    notes: >-
+      Workday host exists but probed sites returned 0 postings/404; an Oracle
+      host (iawmqy.fa.ocs.oraclecloud.com) was also seen without a site
+      number. Needs a confirmed site id before enabling.
+
+  - company_name: "Elevance Health"
+    ats_provider: workday
+    host: "elevancehealth.wd1.myworkdayjobs.com"
+    tenant: elevancehealth
+    site: ANT
+    careers_url: "https://careers.elevancehealth.com/en/jobs/"
+    enabled: true
+    priority: 38
+    student_interest_rank: 38
+    student_interest_count: 18
+    industry: "Health Insurance"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://elevancehealth.wd1.myworkdayjobs.com/wday/cxs/elevancehealth/ANT/jobs"
+    notes: "Indianapolis-headquartered; Workday ANT site (349 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Intuit"
+    ats_provider: static
+    careers_url: "https://jobs.intuit.com/search-jobs"
+    enabled: false
+    priority: 39
+    student_interest_rank: 39
+    student_interest_count: 18
+    industry: "Software (Financial / Tax)"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted custom portal; no public JSON board or exposed Workday
+      apply links detected (2026-07-08).
+
+  - company_name: "Netflix"
+    ats_provider: lever
+    ats_slug: netflix
+    careers_url: "https://explore.jobs.netflix.net/careers"
+    enabled: false
+    priority: 40
+    student_interest_rank: 40
+    student_interest_count: 18
+    industry: "Media / Streaming"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Netflix migrated from Lever to an Eightfold-based portal; the public
+      Lever board returned 0 postings on 2026-07-08.
+
+  - company_name: "Spotify"
+    ats_provider: lever
+    ats_slug: spotify
+    careers_url: "https://www.lifeatspotify.com/jobs"
+    enabled: true
+    priority: 41
+    student_interest_rank: 41
+    student_interest_count: 18
+    industry: "Media / Streaming"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.lever.co/v0/postings/spotify?mode=json"
+    notes: "Data/analytics/platform roles."
+    compliance_review: "Public Lever postings API verified."
+
+  - company_name: "American Express"
+    ats_provider: oraclecloud
+    host: "egug.fa.us2.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://aexp.eightfold.ai/careers"
+    enabled: true
+    priority: 42
+    student_interest_rank: 42
+    student_interest_count: 17
+    industry: "Financial Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://egug.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Oracle CE host discovered behind the Eightfold front end (280 postings)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "FTI Consulting"
+    ats_provider: workday
+    host: "fticonsulting.wd1.myworkdayjobs.com"
+    tenant: fticonsulting
+    site: FTI_Consulting_Careers
+    careers_url: "https://fticonsulting.wd1.myworkdayjobs.com/FTI_Consulting_Careers"
+    enabled: false
+    priority: 43
+    student_interest_rank: 43
+    student_interest_count: 17
+    industry: "Management Consulting"
+    verification_status: pending
+    notes: >-
+      Workday host confirmed but every probed tenant/site combination returned
+      HTTP 422 (2026-07-08). Needs the correct site id before enabling.
+
+  - company_name: "Johnson & Johnson"
+    ats_provider: workday
+    host: "jj.wd5.myworkdayjobs.com"
+    tenant: jj
+    site: JJ
+    careers_url: "https://www.careers.jnj.com/en/jobs/"
+    enabled: true
+    priority: 44
+    student_interest_rank: 44
+    student_interest_count: 17
+    industry: "Pharmaceuticals / Medical Devices"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://jj.wd5.myworkdayjobs.com/wday/cxs/jj/JJ/jobs"
+    notes: "Workday board behind Phenom careers.jnj.com pages (1,701 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Citigroup"
+    ats_provider: workday
+    host: "citi.wd5.myworkdayjobs.com"
+    tenant: citi
+    site: "2"
+    careers_url: "https://jobs.citi.com/search-jobs"
+    enabled: true
+    priority: 45
+    student_interest_rank: 45
+    student_interest_count: 16
+    industry: "Financial Services / Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://citi.wd5.myworkdayjobs.com/wday/cxs/citi/2/jobs"
+    notes: "Workday site id '2' (2,000+ postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Toyota Material Handling North America"
+    ats_provider: static
+    careers_url: "https://www.tmhnc.com/careers"
+    enabled: false
+    priority: 46
+    student_interest_rank: 46
+    student_interest_count: 16
+    industry: "Industrial Manufacturing / Material Handling"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08);
+      brand sites route to dealer-level portals.
+
+  - company_name: "Wipro"
+    ats_provider: static
+    careers_url: "https://careers.wipro.com/careers-home/"
+    enabled: false
+    priority: 47
+    student_interest_rank: 47
+    student_interest_count: 16
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      SuccessFactors-based portal; no unauthenticated public JSON board
+      (2026-07-08).
+
+  - company_name: "Epic Systems"
+    ats_provider: static
+    careers_url: "https://careers.epic.com/"
+    enabled: false
+    priority: 48
+    student_interest_rank: 48
+    student_interest_count: 15
+    industry: "Healthcare IT"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Avature-based custom portal; no public ATS JSON board detected
+      (2026-07-08).
+
+  - company_name: "Cummins"
+    ats_provider: static
+    careers_url: "https://www.cummins.com/careers"
+    enabled: false
+    priority: 49
+    student_interest_rank: 49
+    student_interest_count: 14
+    industry: "Manufacturing / Industrial Equipment"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Indiana/Kelley-relevant but uses an Oracle/Taleo portal with no clean
+      public JSON board (2026-07-08).
+
+  - company_name: "RSM US LLP"
+    ats_provider: workday
+    host: "rsmus.wd1.myworkdayjobs.com"
+    tenant: rsm
+    site: RSMCareers
+    careers_url: "https://rsmus.wd1.myworkdayjobs.com/RSMCareers"
+    enabled: true
+    priority: 50
+    student_interest_rank: 50
+    student_interest_count: 14
+    industry: "Accounting / Professional Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://rsmus.wd1.myworkdayjobs.com/wday/cxs/rsm/RSMCareers/jobs"
+    notes: "Note tenant is 'rsm' while the host prefix is 'rsmus' (531 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  # ===========================================================================
+  # RANKS 51-150 MSIS LAMP LIST EMPLOYERS
+  # ===========================================================================
+
+  - company_name: "W.W. Grainger"
+    ats_provider: workday
+    careers_url: "https://jobs.grainger.com/"
+    enabled: false
+    priority: 51
+    student_interest_rank: 51
+    student_interest_count: 14
+    industry: "Industrial Distribution / Supply Chain"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "West Monroe"
+    ats_provider: static
+    careers_url: "https://www.westmonroe.com/careers"
+    enabled: false
+    priority: 52
+    student_interest_rank: 52
+    student_interest_count: 14
+    industry: "Management Consulting / Digital Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'failed', 404), ('greenhouse', 'failed', 404)]
+
+  - company_name: "United Airlines"
+    ats_provider: workday
+    careers_url: "https://careers.united.com/us/en/search-results"
+    enabled: false
+    priority: 53
+    student_interest_rank: 53
+    student_interest_count: 13
+    industry: "Airlines / Transportation"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Booz Allen Hamilton"
+    ats_provider: workday
+    host: "bah.wd1.myworkdayjobs.com"
+    tenant: bah
+    site: BAH_Jobs
+    careers_url: "https://careers.boozallen.com/jobs/search"
+    enabled: true
+    priority: 54
+    student_interest_rank: 54
+    student_interest_count: 12
+    industry: "Management Consulting / Government Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://bah.wd1.myworkdayjobs.com/wday/cxs/bah/BAH_Jobs/jobs"
+    notes: "Verified live (1986 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Capital One"
+    ats_provider: workday
+    host: "capitalone.wd12.myworkdayjobs.com"
+    tenant: capitalone
+    site: Capital_One
+    careers_url: "https://www.capitalonecareers.com/search-jobs"
+    enabled: true
+    priority: 55
+    student_interest_rank: 55
+    student_interest_count: 12
+    industry: "Financial Services / Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://capitalone.wd12.myworkdayjobs.com/wday/cxs/capitalone/Capital_One/jobs"
+    notes: "Verified live (1424 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "General Motors"
+    ats_provider: workday
+    host: "generalmotors.wd5.myworkdayjobs.com"
+    tenant: generalmotors
+    site: Careers_GM
+    careers_url: "https://search-careers.gm.com/en/jobs/"
+    enabled: true
+    priority: 56
+    student_interest_rank: 56
+    student_interest_count: 12
+    industry: "Automotive / Manufacturing"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://generalmotors.wd5.myworkdayjobs.com/wday/cxs/generalmotors/Careers_GM/jobs"
+    notes: "Verified live (816 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "HP Inc."
+    ats_provider: workday
+    host: "hp.wd5.myworkdayjobs.com"
+    tenant: hp
+    site: ExternalCareerSite
+    careers_url: "https://jobs.hp.com/"
+    enabled: true
+    priority: 57
+    student_interest_rank: 57
+    student_interest_count: 12
+    industry: "Technology / Hardware"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://hp.wd5.myworkdayjobs.com/wday/cxs/hp/ExternalCareerSite/jobs"
+    notes: "Verified live (707 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Kearney"
+    ats_provider: static
+    careers_url: "https://www.kearney.com/careers"
+    enabled: false
+    priority: 58
+    student_interest_rank: 58
+    student_interest_count: 12
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Oliver Wyman"
+    ats_provider: workday
+    host: "mmc.wd1.myworkdayjobs.com"
+    tenant: mmc
+    site: MMC
+    careers_url: "https://careers.marshmclennan.com/global/en/oliver-wyman-search"
+    enabled: true
+    priority: 59
+    student_interest_rank: 59
+    student_interest_count: 12
+    industry: "Management Consulting"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://mmc.wd1.myworkdayjobs.com/wday/cxs/mmc/MMC/jobs"
+    notes: "Verified live (2000 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Wells Fargo"
+    ats_provider: static
+    careers_url: "https://www.wellsfargojobs.com/en/jobs/"
+    enabled: false
+    priority: 60
+    student_interest_rank: 60
+    student_interest_count: 12
+    industry: "Financial Services / Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('workday', 'failed', None)]
+
+  - company_name: "Workday"
+    ats_provider: workday
+    host: "workday.wd5.myworkdayjobs.com"
+    tenant: workday
+    site: Workday
+    careers_url: "https://workday.wd5.myworkdayjobs.com/Workday"
+    enabled: true
+    priority: 61
+    student_interest_rank: 61
+    student_interest_count: 12
+    industry: "Software / Human Capital Management"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://workday.wd5.myworkdayjobs.com/wday/cxs/workday/Workday/jobs"
+    notes: "Verified live (377 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Abbott"
+    ats_provider: workday
+    host: "abbott.wd5.myworkdayjobs.com"
+    tenant: abbott
+    site: abbottcareers
+    careers_url: "https://www.jobs.abbott/us/en/search-results"
+    enabled: true
+    priority: 62
+    student_interest_rank: 62
+    student_interest_count: 11
+    industry: "Healthcare / Medical Devices"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://abbott.wd5.myworkdayjobs.com/wday/cxs/abbott/abbottcareers/jobs"
+    notes: "Verified live (2000 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "AT&T"
+    ats_provider: workday
+    host: "att.wd1.myworkdayjobs.com"
+    tenant: att
+    site: ATTGeneral
+    careers_url: "https://www.att.jobs/search-jobs"
+    enabled: true
+    priority: 63
+    student_interest_rank: 63
+    student_interest_count: 11
+    industry: "Telecommunications"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://att.wd1.myworkdayjobs.com/wday/cxs/att/ATTGeneral/jobs"
+    notes: "Verified live (1014 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "General Electric"
+    ats_provider: static
+    careers_url: "https://jobs.gecareers.com/global/en/search-results"
+    enabled: false
+    priority: 64
+    student_interest_rank: 64
+    student_interest_count: 11
+    industry: "Industrial Conglomerate"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "L.E.K. Consulting"
+    ats_provider: static
+    careers_url: "https://careers.lek.com/"
+    enabled: false
+    priority: 65
+    student_interest_rank: 65
+    student_interest_count: 11
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "PepsiCo"
+    ats_provider: static
+    careers_url: "https://www.pepsicojobs.com/main/jobs"
+    enabled: false
+    priority: 66
+    student_interest_rank: 66
+    student_interest_count: 11
+    industry: "Consumer Packaged Goods / Food & Beverage"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Avature-based custom portal; no public ATS JSON board (2026-07-08).
+    # detected markers: ['avature', 'icims']
+
+  - company_name: "Target"
+    ats_provider: workday
+    host: "target.wd5.myworkdayjobs.com"
+    tenant: target
+    site: targetcareers
+    careers_url: "https://corporate.target.com/careers/search"
+    enabled: true
+    priority: 67
+    student_interest_rank: 67
+    student_interest_count: 11
+    industry: "Retail"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://target.wd5.myworkdayjobs.com/wday/cxs/target/targetcareers/jobs"
+    notes: "Verified live (2000 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Uber"
+    ats_provider: oraclecloud
+    host: "iaziqy.fa.ocs.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://www.uber.com/us/en/careers/list/"
+    enabled: true
+    priority: 68
+    student_interest_rank: 68
+    student_interest_count: 11
+    industry: "Transportation / Rideshare"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://iaziqy.fa.ocs.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Oracle CE host discovered from careers page (611 postings)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Ford"
+    ats_provider: oraclecloud
+    host: "efds.fa.em5.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://efds.fa.em5.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX_1"
+    enabled: true
+    priority: 69
+    student_interest_rank: 69
+    student_interest_count: 10
+    industry: "Automotive / Manufacturing"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://efds.fa.em5.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Verified live (842 postings at verification)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Genpact"
+    ats_provider: workday
+    host: "genpact.wd108.myworkdayjobs.com"
+    tenant: genpact
+    site: External_Careers
+    careers_url: "https://www.genpact.com/careers/job-search"
+    enabled: true
+    priority: 70
+    student_interest_rank: 70
+    student_interest_count: 10
+    industry: "Business Process Outsourcing / Consulting"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://genpact.wd108.myworkdayjobs.com/wday/cxs/genpact/External_Careers/jobs"
+    notes: "Verified live (2000 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Guidehouse"
+    ats_provider: workday
+    host: "guidehouse.wd1.myworkdayjobs.com"
+    tenant: guidehouse
+    site: External
+    careers_url: "https://guidehouse.wd1.myworkdayjobs.com/External"
+    enabled: true
+    priority: 71
+    student_interest_rank: 71
+    student_interest_count: 10
+    industry: "Management Consulting / Government Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://guidehouse.wd1.myworkdayjobs.com/wday/cxs/guidehouse/External/jobs"
+    notes: "Verified live (782 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Huron Consulting Group"
+    ats_provider: workday
+    careers_url: "https://careers.huronconsultinggroup.com/"
+    enabled: false
+    priority: 72
+    student_interest_rank: 72
+    student_interest_count: 10
+    industry: "Management Consulting"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 404 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Walmart"
+    ats_provider: static
+    careers_url: "https://careers.walmart.com/results"
+    enabled: false
+    priority: 73
+    student_interest_rank: 73
+    student_interest_count: 10
+    industry: "Retail"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('workday', 'failed', 410)]
+
+  - company_name: "Bectran"
+    ats_provider: static
+    careers_url: "https://www.bectran.com/company/careers"
+    enabled: false
+    priority: 74
+    student_interest_rank: 74
+    student_interest_count: 9
+    industry: "Software (Fintech / Credit Management)"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'failed', 404), ('lever', 'failed', 404)]
+
+  - company_name: "Bloomberg"
+    ats_provider: static
+    careers_url: "https://careers.bloomberg.com/job/search"
+    enabled: false
+    priority: 75
+    student_interest_rank: 75
+    student_interest_count: 9
+    industry: "Financial Data / Media / Software"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "LinkedIn"
+    ats_provider: static
+    careers_url: "https://careers.linkedin.com/"
+    enabled: false
+    priority: 76
+    student_interest_rank: 76
+    student_interest_count: 9
+    industry: "Technology / Social Media / Professional Networking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Samsung"
+    ats_provider: workday
+    host: "sec.wd3.myworkdayjobs.com"
+    tenant: sec
+    site: Samsung_Careers
+    careers_url: "https://www.samsung.com/us/careers/"
+    enabled: true
+    priority: 77
+    student_interest_rank: 77
+    student_interest_count: 9
+    industry: "Consumer Electronics / Technology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://sec.wd3.myworkdayjobs.com/wday/cxs/sec/Samsung_Careers/jobs"
+    notes: "Verified live (534 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Tata Consultancy Services"
+    ats_provider: static
+    careers_url: "https://www.tcs.com/careers"
+    enabled: false
+    priority: 78
+    student_interest_rank: 78
+    student_interest_count: 9
+    merged_excel_ranks: [110]
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    notes: "Canonical entry; Excel rank 110 (TCS) merged into this one."
+
+  - company_name: "The Walt Disney Company"
+    ats_provider: static
+    careers_url: "https://www.disneycareers.com/en/search-jobs"
+    enabled: false
+    priority: 79
+    student_interest_rank: 79
+    student_interest_count: 9
+    industry: "Entertainment / Media"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Baker Tilly"
+    ats_provider: static
+    careers_url: "https://careers.bakertilly.com/"
+    enabled: false
+    priority: 81
+    student_interest_rank: 81
+    student_interest_count: 8
+    industry: "Accounting / Professional Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Boeing"
+    ats_provider: workday
+    host: "boeing.wd1.myworkdayjobs.com"
+    tenant: boeing
+    site: EXTERNAL_CAREERS
+    careers_url: "https://jobs.boeing.com/search-jobs"
+    enabled: true
+    priority: 82
+    student_interest_rank: 82
+    student_interest_count: 8
+    industry: "Aerospace / Defense"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boeing.wd1.myworkdayjobs.com/wday/cxs/boeing/EXTERNAL_CAREERS/jobs"
+    notes: "Verified live (1027 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "CrowdStrike"
+    ats_provider: workday
+    host: "crowdstrike.wd5.myworkdayjobs.com"
+    tenant: crowdstrike
+    site: crowdstrikecareers
+    careers_url: "https://www.crowdstrike.com/careers/"
+    enabled: true
+    priority: 83
+    student_interest_rank: 83
+    student_interest_count: 8
+    industry: "Cybersecurity"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://crowdstrike.wd5.myworkdayjobs.com/wday/cxs/crowdstrike/crowdstrikecareers/jobs"
+    notes: "Verified live (428 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Nike"
+    ats_provider: workday
+    host: "nike.wd1.myworkdayjobs.com"
+    tenant: nike
+    site: nke
+    careers_url: "https://careers.nike.com/"
+    enabled: true
+    priority: 84
+    student_interest_rank: 84
+    student_interest_count: 8
+    industry: "Retail / Apparel / Footwear"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://nike.wd1.myworkdayjobs.com/wday/cxs/nike/nke/jobs"
+    notes: "Verified live (757 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Pfizer"
+    ats_provider: workday
+    host: "pfizer.wd1.myworkdayjobs.com"
+    tenant: pfizer
+    site: PfizerCareers
+    careers_url: "https://www.pfizer.com/about/careers"
+    enabled: true
+    priority: 85
+    student_interest_rank: 85
+    student_interest_count: 8
+    industry: "Pharmaceuticals / Biotechnology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://pfizer.wd1.myworkdayjobs.com/wday/cxs/pfizer/PfizerCareers/jobs"
+    notes: "Verified live (473 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "AbbVie"
+    ats_provider: static
+    careers_url: "https://careers.abbvie.com/en/search-jobs"
+    enabled: false
+    priority: 86
+    student_interest_rank: 86
+    student_interest_count: 7
+    industry: "Pharmaceuticals / Biotechnology"
+    verification_status: unsupported
+    unsupported_reason: >-
+      ATS endpoint blocks unauthenticated requests (401); per compliance rules a blocking source stays disabled (2026-07-08).
+    # probes: [('workday', 'blocked', 401)]
+
+  - company_name: "American Airlines"
+    ats_provider: static
+    careers_url: "https://jobs.aa.com/search-jobs"
+    enabled: false
+    priority: 87
+    student_interest_rank: 87
+    student_interest_count: 7
+    industry: "Airlines / Transportation"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "CGI"
+    ats_provider: static
+    careers_url: "https://www.cgi.com/en/careers"
+    enabled: false
+    priority: 88
+    student_interest_rank: 88
+    student_interest_count: 7
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "CVS Health"
+    ats_provider: workday
+    host: "cvshealth.wd1.myworkdayjobs.com"
+    tenant: cvshealth
+    site: CVS_Health_Careers
+    careers_url: "https://jobs.cvshealth.com/us/en/search-results"
+    enabled: true
+    priority: 89
+    student_interest_rank: 89
+    student_interest_count: 7
+    industry: "Healthcare / Retail Pharmacy"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://cvshealth.wd1.myworkdayjobs.com/wday/cxs/cvshealth/CVS_Health_Careers/jobs"
+    notes: "Verified live (17238 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Delta Air Lines"
+    ats_provider: static
+    careers_url: "https://careers.delta.com/careers"
+    enabled: false
+    priority: 90
+    student_interest_rank: 90
+    student_interest_count: 7
+    industry: "Airlines / Transportation"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "HubSpot"
+    ats_provider: static
+    careers_url: "https://www.hubspot.com/careers/jobs"
+    enabled: false
+    priority: 91
+    student_interest_rank: 91
+    student_interest_count: 7
+    industry: "Software (CRM / Marketing Automation)"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'empty', 200)]
+
+  - company_name: "Slalom"
+    ats_provider: static
+    careers_url: "https://www.slalom.com/us/en/careers/find-a-role"
+    enabled: false
+    priority: 93
+    student_interest_rank: 93
+    student_interest_count: 7
+    merged_excel_ranks: [109]
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    notes: "Canonical entry; Excel rank 109 (Slalom Consulting) merged into this one."
+
+  - company_name: "Snowflake"
+    ats_provider: ashby
+    ats_slug: snowflake
+    careers_url: "https://careers.snowflake.com/us/en/search-results"
+    enabled: true
+    priority: 94
+    student_interest_rank: 94
+    student_interest_count: 7
+    industry: "Software / Data & Cloud"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.ashbyhq.com/posting-api/job-board/snowflake"
+    notes: "Verified live (410 postings at verification)."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "Walgreens Boots Alliance"
+    ats_provider: workday
+    careers_url: "https://jobs.walgreens.com/en/search-jobs"
+    enabled: false
+    priority: 95
+    student_interest_rank: 95
+    student_interest_count: 7
+    industry: "Retail / Pharmacy"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Allstate"
+    ats_provider: workday
+    host: "allstate.wd5.myworkdayjobs.com"
+    tenant: allstate
+    site: allstate_careers
+    careers_url: "https://www.allstate.jobs/search-jobs/"
+    enabled: true
+    priority: 97
+    student_interest_rank: 97
+    student_interest_count: 6
+    industry: "Insurance"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://allstate.wd5.myworkdayjobs.com/wday/cxs/allstate/allstate_careers/jobs"
+    notes: "Verified live (467 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "BDO"
+    ats_provider: oraclecloud
+    host: "ebqb.fa.us2.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://www.bdo.com/careers"
+    enabled: true
+    priority: 98
+    student_interest_rank: 98
+    student_interest_count: 6
+    industry: "Accounting / Professional Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://ebqb.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Oracle CE host discovered from careers page (382 postings)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Caterpillar"
+    ats_provider: static
+    careers_url: "https://careers.caterpillar.com/en/jobs/"
+    enabled: false
+    priority: 99
+    student_interest_rank: 99
+    student_interest_count: 6
+    industry: "Manufacturing / Industrial Equipment"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Comcast"
+    ats_provider: workday
+    host: "comcast.wd5.myworkdayjobs.com"
+    tenant: comcast
+    site: Comcast_Careers
+    careers_url: "https://jobs.comcast.com/search-jobs"
+    enabled: true
+    priority: 100
+    student_interest_rank: 100
+    student_interest_count: 6
+    industry: "Telecommunications / Media"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://comcast.wd5.myworkdayjobs.com/wday/cxs/comcast/Comcast_Careers/jobs"
+    notes: "Verified live (835 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Gartner"
+    ats_provider: workday
+    host: "gartner.wd5.myworkdayjobs.com"
+    tenant: gartner
+    site: EXT
+    careers_url: "https://jobs.gartner.com/jobs/"
+    enabled: true
+    priority: 101
+    student_interest_rank: 101
+    student_interest_count: 6
+    industry: "Research / Advisory Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://gartner.wd5.myworkdayjobs.com/wday/cxs/gartner/EXT/jobs"
+    notes: "Verified live (765 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "HSBC"
+    ats_provider: static
+    careers_url: "https://mycareer.hsbc.com/en_GB/external"
+    enabled: false
+    priority: 102
+    student_interest_rank: 102
+    student_interest_count: 6
+    industry: "Financial Services / Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Optum"
+    ats_provider: static
+    careers_url: "https://careers.unitedhealthgroup.com/job-search-results/"
+    enabled: false
+    priority: 103
+    student_interest_rank: 103
+    student_interest_count: 6
+    industry: "Healthcare / Health Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Oracle Taleo portal; no clean public JSON board (2026-07-08).
+    # detected markers: ['taleo']
+
+  - company_name: "Philips Healthcare"
+    ats_provider: workday
+    host: "philips.wd3.myworkdayjobs.com"
+    tenant: philips
+    site: jobs-and-careers
+    careers_url: "https://www.careers.philips.com/global/en/search-results"
+    enabled: true
+    priority: 105
+    student_interest_rank: 105
+    student_interest_count: 6
+    industry: "Healthcare / Medical Devices"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://philips.wd3.myworkdayjobs.com/wday/cxs/philips/jobs-and-careers/jobs"
+    notes: "Verified live (1102 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Publicis Sapient"
+    ats_provider: static
+    careers_url: "https://careers.publicissapient.com/jobs"
+    enabled: false
+    priority: 106
+    student_interest_rank: 106
+    student_interest_count: 6
+    industry: "IT Consulting / Digital Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Roland Berger"
+    ats_provider: static
+    careers_url: "https://rolandberger.jobs/"
+    enabled: false
+    priority: 107
+    student_interest_rank: 107
+    student_interest_count: 6
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Siemens"
+    ats_provider: static
+    careers_url: "https://jobs.siemens.com/careers"
+    enabled: false
+    priority: 108
+    student_interest_rank: 108
+    student_interest_count: 6
+    industry: "Industrial Manufacturing / Technology"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Atlassian"
+    ats_provider: static
+    careers_url: "https://www.atlassian.com/company/careers/all-jobs"
+    enabled: false
+    priority: 111
+    student_interest_rank: 111
+    student_interest_count: 5
+    industry: "Software (Collaboration Tools)"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'failed', 404)]
+
+  - company_name: "Atos"
+    ats_provider: static
+    careers_url: "https://atos.net/en/join-us"
+    enabled: false
+    priority: 112
+    student_interest_rank: 112
+    student_interest_count: 5
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Boston Scientific"
+    ats_provider: workday
+    careers_url: "https://careers.bostonscientific.com/"
+    enabled: false
+    priority: 113
+    student_interest_rank: 113
+    student_interest_count: 5
+    industry: "Medical Devices / Healthcare"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "DHL"
+    ats_provider: static
+    careers_url: "https://careers.dhl.com/global/en/search-results"
+    enabled: false
+    priority: 114
+    student_interest_rank: 114
+    student_interest_count: 5
+    industry: "Logistics / Supply Chain"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted portal without exposed Workday apply links; no public JSON board detected (2026-07-08).
+    # detected markers: ['phenom']
+
+  - company_name: "GE HealthCare"
+    ats_provider: workday
+    host: "gehc.wd5.myworkdayjobs.com"
+    tenant: gehc
+    site: GEHC_ExternalSite
+    careers_url: "https://careers.gehealthcare.com/global/en/search-results"
+    enabled: true
+    priority: 115
+    student_interest_rank: 115
+    student_interest_count: 5
+    industry: "Healthcare / Medical Devices"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://gehc.wd5.myworkdayjobs.com/wday/cxs/gehc/GEHC_ExternalSite/jobs"
+    notes: "Verified live (1027 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Honeywell"
+    ats_provider: oraclecloud
+    host: "ibqbjb.fa.ocs.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://careers.honeywell.com/us/en/search-results"
+    enabled: true
+    priority: 116
+    student_interest_rank: 116
+    student_interest_count: 5
+    industry: "Industrial / Technology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://ibqbjb.fa.ocs.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Oracle CE host discovered from careers page (1474 postings)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "IU Health"
+    ats_provider: static
+    careers_url: "https://careers.iuhealth.org/"
+    enabled: false
+    priority: 117
+    student_interest_rank: 117
+    student_interest_count: 5
+    industry: "Healthcare / Hospitals"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "LTIMindtree"
+    ats_provider: static
+    careers_url: "https://www.ltimindtree.com/careers/"
+    enabled: false
+    priority: 118
+    student_interest_rank: 118
+    student_interest_count: 5
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Medtronic"
+    ats_provider: workday
+    host: "medtronic.wd1.myworkdayjobs.com"
+    tenant: medtronic
+    site: MedtronicCareers
+    careers_url: "https://jobs.medtronic.com/search-jobs"
+    enabled: true
+    priority: 120
+    student_interest_rank: 120
+    student_interest_count: 5
+    industry: "Medical Devices"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://medtronic.wd1.myworkdayjobs.com/wday/cxs/medtronic/MedtronicCareers/jobs"
+    notes: "Verified live (1072 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Morningstar"
+    ats_provider: workday
+    host: "morningstar.wd5.myworkdayjobs.com"
+    tenant: morningstar
+    site: Americas
+    careers_url: "https://careers.morningstar.com/us/en"
+    enabled: true
+    priority: 121
+    student_interest_rank: 121
+    student_interest_count: 5
+    industry: "Financial Services / Research"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://morningstar.wd5.myworkdayjobs.com/wday/cxs/morningstar/Americas/jobs"
+    notes: "Verified live (204 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Nestle"
+    ats_provider: static
+    careers_url: "https://www.nestlejobs.com/search-jobs"
+    enabled: false
+    priority: 122
+    student_interest_rank: 122
+    student_interest_count: 5
+    industry: "Consumer Packaged Goods / Food & Beverage"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Roche Diagnostics"
+    ats_provider: workday
+    host: "roche.wd3.myworkdayjobs.com"
+    tenant: roche
+    site: roche-ext
+    careers_url: "https://careers.roche.com/global/en/search-results"
+    enabled: true
+    priority: 123
+    student_interest_rank: 123
+    student_interest_count: 5
+    industry: "Healthcare / Medical Diagnostics"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://roche.wd3.myworkdayjobs.com/wday/cxs/roche/roche-ext/jobs"
+    notes: "Verified live (1246 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Block"
+    ats_provider: greenhouse
+    ats_slug: block
+    careers_url: "https://block.xyz/careers/jobs"
+    enabled: true
+    priority: 124
+    student_interest_rank: 124
+    student_interest_count: 5
+    industry: "Financial Services / Payments"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/block/jobs"
+    notes: "Verified live (202 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Unilever"
+    ats_provider: workday
+    host: "unilever.wd3.myworkdayjobs.com"
+    tenant: unilever
+    site: Unilever_Experienced_Professionals
+    careers_url: "https://careers.unilever.com/global/en/search-results"
+    enabled: true
+    priority: 125
+    student_interest_rank: 125
+    student_interest_count: 5
+    industry: "Consumer Packaged Goods"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://unilever.wd3.myworkdayjobs.com/wday/cxs/unilever/Unilever_Experienced_Professionals/jobs"
+    notes: "Verified live (282 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "UnitedHealth Group"
+    ats_provider: static
+    careers_url: "https://careers.unitedhealthgroup.com/job-search-results/"
+    enabled: false
+    priority: 126
+    student_interest_rank: 126
+    student_interest_count: 5
+    industry: "Healthcare / Health Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Oracle Taleo portal; no clean public JSON board (2026-07-08).
+    # detected markers: ['taleo']
+
+  - company_name: "Zoom"
+    ats_provider: workday
+    host: "zoom.wd5.myworkdayjobs.com"
+    tenant: zoom
+    site: Zoom
+    careers_url: "https://careers.zoom.us/jobs/search"
+    enabled: true
+    priority: 127
+    student_interest_rank: 127
+    student_interest_count: 5
+    industry: "Software / Video Conferencing"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://zoom.wd5.myworkdayjobs.com/wday/cxs/zoom/Zoom/jobs"
+    notes: "Verified live (93 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "ADM"
+    ats_provider: static
+    careers_url: "https://www.adm.com/en-us/culture-and-careers/"
+    enabled: false
+    priority: 128
+    student_interest_rank: 128
+    student_interest_count: 4
+    industry: "Agriculture / Food Processing"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "AlixPartners"
+    ats_provider: static
+    careers_url: "https://www.alixpartners.com/careers/"
+    enabled: false
+    priority: 129
+    student_interest_rank: 129
+    student_interest_count: 4
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Alvarez & Marsal"
+    ats_provider: static
+    careers_url: "https://www.alvarezandmarsal.com/careers"
+    enabled: false
+    priority: 130
+    student_interest_rank: 130
+    student_interest_count: 4
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Avanade"
+    ats_provider: workday
+    careers_url: "https://www.avanade.com/en-us/career/job-search"
+    enabled: false
+    priority: 131
+    student_interest_rank: 131
+    student_interest_count: 4
+    industry: "IT Consulting / Technology Services"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Barclays"
+    ats_provider: workday
+    host: "barclays.wd3.myworkdayjobs.com"
+    tenant: barclays
+    site: External_Career_Site_Barclays
+    careers_url: "https://search.jobs.barclays/"
+    enabled: true
+    priority: 132
+    student_interest_rank: 132
+    student_interest_count: 4
+    industry: "Financial Services / Investment Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://barclays.wd3.myworkdayjobs.com/wday/cxs/barclays/External_Career_Site_Barclays/jobs"
+    notes: "Verified live (1111 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Baxter"
+    ats_provider: workday
+    careers_url: "https://jobs.baxter.com/search-jobs"
+    enabled: false
+    priority: 133
+    student_interest_rank: 133
+    student_interest_count: 4
+    industry: "Healthcare / Medical Devices"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 404 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "BMO Financial Group"
+    ats_provider: workday
+    host: "bmo.wd3.myworkdayjobs.com"
+    tenant: bmo
+    site: External
+    careers_url: "https://jobs.bmo.com/ca/en/search-results"
+    enabled: true
+    priority: 134
+    student_interest_rank: 134
+    student_interest_count: 4
+    industry: "Financial Services / Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://bmo.wd3.myworkdayjobs.com/wday/cxs/bmo/External/jobs"
+    notes: "Verified live (1136 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "CDW"
+    ats_provider: workday
+    careers_url: "https://www.cdwjobs.com/"
+    enabled: false
+    priority: 135
+    student_interest_rank: 135
+    student_interest_count: 4
+    industry: "Technology / IT Distribution"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Costco"
+    ats_provider: static
+    careers_url: "https://www.costco.com/jobs.html"
+    enabled: false
+    priority: 136
+    student_interest_rank: 136
+    student_interest_count: 4
+    industry: "Retail / Wholesale"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "EPAM Systems"
+    ats_provider: static
+    careers_url: "https://www.epam.com/careers/job-listings"
+    enabled: false
+    priority: 138
+    student_interest_rank: 138
+    student_interest_count: 4
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Fidelity Investments"
+    ats_provider: static
+    careers_url: "https://jobs.fidelity.com/"
+    enabled: false
+    priority: 139
+    student_interest_rank: 139
+    student_interest_count: 4
+    industry: "Financial Services / Investment Management"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "FIS Global"
+    ats_provider: workday
+    host: "fis.wd5.myworkdayjobs.com"
+    tenant: fis
+    site: SearchJobs
+    careers_url: "https://careers.fisglobal.com/us/en/search-results"
+    enabled: true
+    priority: 140
+    student_interest_rank: 140
+    student_interest_count: 4
+    industry: "Financial Services / Fintech"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://fis.wd5.myworkdayjobs.com/wday/cxs/fis/SearchJobs/jobs"
+    notes: "Verified live (340 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Genesys"
+    ats_provider: workday
+    host: "genesys.wd1.myworkdayjobs.com"
+    tenant: genesys
+    site: Genesys
+    careers_url: "https://careers.genesys.com/"
+    enabled: true
+    priority: 141
+    student_interest_rank: 141
+    student_interest_count: 4
+    industry: "Software (Contact Center / Customer Experience)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://genesys.wd1.myworkdayjobs.com/wday/cxs/genesys/Genesys/jobs"
+    notes: "Verified live (209 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Hewlett Packard Enterprise"
+    ats_provider: workday
+    host: "hpe.wd5.myworkdayjobs.com"
+    tenant: hpe
+    site: Jobsathpe
+    careers_url: "https://careers.hpe.com/us/en/search-results"
+    enabled: true
+    priority: 142
+    student_interest_rank: 142
+    student_interest_count: 4
+    merged_excel_ranks: [247]
+    industry: "Technology / Hardware"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://hpe.wd5.myworkdayjobs.com/wday/cxs/hpe/Jobsathpe/jobs"
+    notes: "Verified live (1178 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Humana"
+    ats_provider: workday
+    host: "humana.wd5.myworkdayjobs.com"
+    tenant: humana
+    site: Humana_External_Career_Site
+    careers_url: "https://careers.humana.com/"
+    enabled: true
+    priority: 143
+    student_interest_rank: 143
+    student_interest_count: 4
+    industry: "Health Insurance"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://humana.wd5.myworkdayjobs.com/wday/cxs/humana/Humana_External_Career_Site/jobs"
+    notes: "Verified live (298 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "IQVIA"
+    ats_provider: workday
+    host: "iqvia.wd1.myworkdayjobs.com"
+    tenant: iqvia
+    site: IQVIA
+    careers_url: "https://jobs.iqvia.com/en/search-jobs"
+    enabled: true
+    priority: 144
+    student_interest_rank: 144
+    student_interest_count: 4
+    industry: "Healthcare / Life Sciences"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://iqvia.wd1.myworkdayjobs.com/wday/cxs/iqvia/IQVIA/jobs"
+    notes: "Verified live (1986 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Lenovo"
+    ats_provider: static
+    careers_url: "https://jobs.lenovo.com/en_US/careers"
+    enabled: false
+    priority: 145
+    student_interest_rank: 145
+    student_interest_count: 4
+    industry: "Technology / Hardware"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Lockheed Martin"
+    ats_provider: static
+    careers_url: "https://www.lockheedmartinjobs.com/search-jobs"
+    enabled: false
+    priority: 146
+    student_interest_rank: 146
+    student_interest_count: 4
+    industry: "Aerospace / Defense"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Avature-based custom portal; no public ATS JSON board (2026-07-08).
+    # detected markers: ['avature']
+
+  - company_name: "Lyft"
+    ats_provider: greenhouse
+    ats_slug: lyft
+    careers_url: "https://www.lyft.com/careers"
+    enabled: true
+    priority: 147
+    student_interest_rank: 147
+    student_interest_count: 4
+    industry: "Transportation / Rideshare"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/lyft/jobs"
+    notes: "Verified live (156 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "McDonald's"
+    ats_provider: static
+    careers_url: "https://careers.mcdonalds.com/"
+    enabled: false
+    priority: 148
+    student_interest_rank: 148
+    student_interest_count: 4
+    industry: "Food & Beverage / Quick Service Restaurants"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Medline Industries"
+    ats_provider: workday
+    careers_url: "https://www.medline.com/careers/"
+    enabled: false
+    priority: 149
+    student_interest_rank: 149
+    student_interest_count: 4
+    industry: "Healthcare / Medical Supplies"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  # ===========================================================================
+  # RANKS 151-300 MSIS LAMP LIST EMPLOYERS
+  # ===========================================================================
+
+  - company_name: "NTT DATA"
+    ats_provider: static
+    careers_url: "https://careers.services.global.ntt/"
+    enabled: false
+    priority: 151
+    student_interest_rank: 151
+    student_interest_count: 4
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Careers page routes to NTT Global Data Centers' Workday tenant (nttglobaldatacenters.wd501), a different NTT subsidiary; NTT DATA itself exposes no public JSON board (2026-07-08).
+
+  - company_name: "Palo Alto Networks"
+    ats_provider: workday
+    host: "paloaltonetworks.wd5.myworkdayjobs.com"
+    tenant: paloaltonetworks
+    site: panwexternalcareers
+    careers_url: "https://jobs.paloaltonetworks.com/en/"
+    enabled: true
+    priority: 152
+    student_interest_rank: 152
+    student_interest_count: 4
+    industry: "Cybersecurity"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://paloaltonetworks.wd5.myworkdayjobs.com/wday/cxs/paloaltonetworks/panwexternalcareers/jobs"
+    notes: "Verified live (1425 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Sony"
+    ats_provider: static
+    careers_url: "https://www.sony.com/en/SonyInfo/Careers/"
+    enabled: false
+    priority: 153
+    student_interest_rank: 153
+    student_interest_count: 4
+    industry: "Consumer Electronics / Entertainment"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Stryker"
+    ats_provider: workday
+    host: "stryker.wd1.myworkdayjobs.com"
+    tenant: stryker
+    site: StrykerCareers
+    careers_url: "https://careers.stryker.com/"
+    enabled: true
+    priority: 155
+    student_interest_rank: 155
+    student_interest_count: 4
+    industry: "Medical Devices"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://stryker.wd1.myworkdayjobs.com/wday/cxs/stryker/StrykerCareers/jobs"
+    notes: "Verified live (1159 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Thoughtworks"
+    ats_provider: greenhouse
+    ats_slug: thoughtworks
+    careers_url: "https://www.thoughtworks.com/careers/jobs"
+    enabled: true
+    priority: 156
+    student_interest_rank: 156
+    student_interest_count: 4
+    industry: "IT Services / Consulting"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/thoughtworks/jobs"
+    notes: "Verified live (62 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "TikTok"
+    ats_provider: static
+    careers_url: "https://lifeattiktok.com/search"
+    enabled: false
+    priority: 157
+    student_interest_rank: 157
+    student_interest_count: 4
+    industry: "Technology / Social Media"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Verizon"
+    ats_provider: static
+    careers_url: "https://mycareer.verizon.com/jobs/"
+    enabled: false
+    priority: 158
+    student_interest_rank: 158
+    student_interest_count: 4
+    industry: "Telecommunications"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "AlphaSights"
+    ats_provider: greenhouse
+    ats_slug: alphasights
+    careers_url: "https://www.alphasights.com/careers/open-positions/"
+    enabled: true
+    priority: 159
+    student_interest_rank: 159
+    student_interest_count: 3
+    industry: "Information Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/alphasights/jobs"
+    notes: "Verified live (86 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "AMD"
+    ats_provider: workday
+    careers_url: "https://careers.amd.com/careers-home"
+    enabled: false
+    priority: 160
+    student_interest_rank: 160
+    student_interest_count: 3
+    industry: "Semiconductors"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Amgen"
+    ats_provider: workday
+    host: "amgen.wd1.myworkdayjobs.com"
+    tenant: amgen
+    site: careers
+    careers_url: "https://careers.amgen.com/en"
+    enabled: true
+    priority: 161
+    student_interest_rank: 161
+    student_interest_count: 3
+    industry: "Biotechnology / Pharmaceuticals"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://amgen.wd1.myworkdayjobs.com/wday/cxs/amgen/careers/jobs"
+    notes: "Verified live (1598 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Anthropic"
+    ats_provider: greenhouse
+    ats_slug: anthropic
+    careers_url: "https://www.anthropic.com/careers"
+    enabled: true
+    priority: 162
+    student_interest_rank: 162
+    student_interest_count: 3
+    industry: "Artificial Intelligence"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs"
+    notes: "Verified live (399 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Aon"
+    ats_provider: workday
+    careers_url: "https://jobs.aon.com/"
+    enabled: false
+    priority: 163
+    student_interest_rank: 163
+    student_interest_count: 3
+    industry: "Professional Services / Risk Management"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Asana"
+    ats_provider: greenhouse
+    ats_slug: asana
+    careers_url: "https://asana.com/jobs/all"
+    enabled: true
+    priority: 164
+    student_interest_rank: 164
+    student_interest_count: 3
+    industry: "Software (Productivity Tools)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/asana/jobs"
+    notes: "Verified live (149 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "BlackRock"
+    ats_provider: workday
+    host: "blackrock.wd1.myworkdayjobs.com"
+    tenant: blackrock
+    site: BlackRock_Professional
+    careers_url: "https://careers.blackrock.com/"
+    enabled: true
+    priority: 165
+    student_interest_rank: 165
+    student_interest_count: 3
+    industry: "Asset Management / Financial Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://blackrock.wd1.myworkdayjobs.com/wday/cxs/blackrock/BlackRock_Professional/jobs"
+    notes: "Verified live (250 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Cardinal Health"
+    ats_provider: workday
+    host: "cardinalhealth.wd1.myworkdayjobs.com"
+    tenant: cardinalhealth
+    site: EXT
+    careers_url: "https://jobs.cardinalhealth.com/search"
+    enabled: true
+    priority: 166
+    student_interest_rank: 166
+    student_interest_count: 3
+    industry: "Healthcare / Medical Distribution"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://cardinalhealth.wd1.myworkdayjobs.com/wday/cxs/cardinalhealth/EXT/jobs"
+    notes: "Verified live (773 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Charles Schwab"
+    ats_provider: static
+    careers_url: "https://www.schwabjobs.com/"
+    enabled: false
+    priority: 167
+    student_interest_rank: 167
+    student_interest_count: 3
+    industry: "Financial Services / Brokerage"
+    verification_status: unsupported
+    unsupported_reason: >-
+      iCIMS-hosted portal; the iCIMS Job Portal API requires a customer partnership and there is no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['icims']
+
+  - company_name: "Cigna"
+    ats_provider: workday
+    host: "cigna.wd5.myworkdayjobs.com"
+    tenant: cigna
+    site: cignacareers
+    careers_url: "https://jobs.thecignagroup.com/us/en"
+    enabled: true
+    priority: 168
+    student_interest_rank: 168
+    student_interest_count: 3
+    industry: "Health Insurance"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://cigna.wd5.myworkdayjobs.com/wday/cxs/cigna/cignacareers/jobs"
+    notes: "Verified live (629 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "CohnReznick"
+    ats_provider: static
+    careers_url: "https://www.cohnreznick.com/careers"
+    enabled: false
+    priority: 169
+    student_interest_rank: 169
+    student_interest_count: 3
+    industry: "Accounting / Professional Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Discover"
+    ats_provider: static
+    careers_url: "https://jobs.discover.com/"
+    enabled: false
+    priority: 170
+    student_interest_rank: 170
+    student_interest_count: 3
+    industry: "Financial Services / Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Hires through the already-enabled Capital One (rank 55) Workday board; Discover was acquired by Capital One in 2025 and its careers page routes there; kept disabled so the shared endpoint is not fetched twice (2026-07-08).
+
+  - company_name: "Figma"
+    ats_provider: greenhouse
+    ats_slug: figma
+    careers_url: "https://www.figma.com/careers/"
+    enabled: true
+    priority: 171
+    student_interest_rank: 171
+    student_interest_count: 3
+    industry: "Software (Design / Collaboration Tools)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/figma/jobs"
+    notes: "Verified live (166 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Fortinet"
+    ats_provider: oraclecloud
+    host: "edel.fa.us2.oraclecloud.com"
+    site: CX_2001
+    careers_url: "https://www.fortinet.com/corporate/careers"
+    enabled: true
+    priority: 172
+    student_interest_rank: 172
+    student_interest_count: 3
+    industry: "Cybersecurity"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://edel.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_2001,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Verified live (923 postings at verification)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Forvis"
+    ats_provider: static
+    careers_url: "https://careers.forvismazars.us/"
+    enabled: false
+    priority: 173
+    student_interest_rank: 173
+    student_interest_count: 3
+    industry: "Accounting / Professional Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Hitachi Vantara"
+    ats_provider: static
+    careers_url: "https://www.hitachivantara.com/en-us/company/careers"
+    enabled: false
+    priority: 174
+    student_interest_rank: 174
+    student_interest_count: 3
+    industry: "IT Services / Data Infrastructure"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Honda"
+    ats_provider: static
+    careers_url: "https://careers.honda.com/"
+    enabled: false
+    priority: 175
+    student_interest_rank: 175
+    student_interest_count: 3
+    industry: "Automotive / Manufacturing"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted portal without exposed Workday apply links; no public JSON board detected (2026-07-08).
+    # detected markers: ['phenom']
+
+  - company_name: "Korn Ferry"
+    ats_provider: static
+    careers_url: "https://www.kornferry.com/about-us/careers"
+    enabled: false
+    priority: 176
+    student_interest_rank: 176
+    student_interest_count: 3
+    industry: "Executive Search / Talent Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Kroger"
+    ats_provider: oraclecloud
+    host: "eluq.fa.us2.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://jobs.kroger.com/"
+    enabled: true
+    priority: 177
+    student_interest_rank: 177
+    student_interest_count: 3
+    industry: "Retail / Grocery"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://eluq.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Verified live (15065 postings at verification)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Leidos"
+    ats_provider: workday
+    host: "leidos.wd5.myworkdayjobs.com"
+    tenant: leidos
+    site: External
+    careers_url: "https://careers.leidos.com/search/jobs"
+    enabled: true
+    priority: 178
+    student_interest_rank: 178
+    student_interest_count: 3
+    industry: "Aerospace / Defense / IT Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://leidos.wd5.myworkdayjobs.com/wday/cxs/leidos/External/jobs"
+    notes: "Verified live (1871 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Liberty Mutual"
+    ats_provider: static
+    careers_url: "https://jobs.libertymutualgroup.com/search-jobs/"
+    enabled: false
+    priority: 179
+    student_interest_rank: 179
+    student_interest_count: 3
+    industry: "Insurance"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Eightfold-based custom portal; no documented public JSON board (2026-07-08).
+    # detected markers: ['eightfold', 'taleo']
+
+  - company_name: "Mayo Clinic"
+    ats_provider: oraclecloud
+    host: "fa-euwp-saasfaprod1.fa.ocs.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://jobs.mayoclinic.org/search-jobs"
+    enabled: true
+    priority: 180
+    student_interest_rank: 180
+    student_interest_count: 3
+    industry: "Healthcare / Hospitals"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://fa-euwp-saasfaprod1.fa.ocs.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Verified live (1316 postings at verification)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Merck"
+    ats_provider: workday
+    host: "msd.wd5.myworkdayjobs.com"
+    tenant: msd
+    site: SearchJobs
+    careers_url: "https://jobs.merck.com/us/en/search-results"
+    enabled: true
+    priority: 181
+    student_interest_rank: 181
+    student_interest_count: 3
+    industry: "Pharmaceuticals / Biotechnology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://msd.wd5.myworkdayjobs.com/wday/cxs/msd/SearchJobs/jobs"
+    notes: "Verified live (915 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "NBCUniversal"
+    ats_provider: static
+    careers_url: "https://www.nbcunicareers.com/find-a-job"
+    enabled: false
+    priority: 182
+    student_interest_rank: 182
+    student_interest_count: 3
+    industry: "Media / Entertainment"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('smartrecruiters', 'empty', 200)]
+
+  - company_name: "NielsenIQ"
+    ats_provider: static
+    careers_url: "https://nielseniq.com/global/en/careers/"
+    enabled: false
+    priority: 183
+    student_interest_rank: 183
+    student_interest_count: 3
+    industry: "Market Research / Analytics"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Northern Trust"
+    ats_provider: workday
+    host: "ntrs.wd1.myworkdayjobs.com"
+    tenant: ntrs
+    site: northerntrust
+    careers_url: "https://careers.northerntrust.com/"
+    enabled: true
+    priority: 184
+    student_interest_rank: 184
+    student_interest_count: 3
+    industry: "Financial Services"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://ntrs.wd1.myworkdayjobs.com/wday/cxs/ntrs/northerntrust/jobs"
+    notes: "Verified live (618 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Novartis"
+    ats_provider: workday
+    host: "novartis.wd3.myworkdayjobs.com"
+    tenant: novartis
+    site: Novartis_Careers
+    careers_url: "https://www.novartis.com/careers"
+    enabled: true
+    priority: 185
+    student_interest_rank: 185
+    student_interest_count: 3
+    industry: "Pharmaceuticals / Biotechnology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://novartis.wd3.myworkdayjobs.com/wday/cxs/novartis/Novartis_Careers/jobs"
+    notes: "Verified live (884 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "OC&C Strategy Consultants"
+    ats_provider: static
+    careers_url: "https://www.occstrategy.com/en/careers/"
+    enabled: false
+    priority: 186
+    student_interest_rank: 186
+    student_interest_count: 3
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Persistent Systems"
+    ats_provider: static
+    careers_url: "https://www.persistent.com/careers/"
+    enabled: false
+    priority: 187
+    student_interest_rank: 187
+    student_interest_count: 3
+    industry: "IT Services / Software Engineering"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Pinterest"
+    ats_provider: greenhouse
+    ats_slug: pinterest
+    careers_url: "https://www.pinterestcareers.com/jobs/"
+    enabled: true
+    priority: 188
+    student_interest_rank: 188
+    student_interest_count: 3
+    industry: "Technology / Social Media"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/pinterest/jobs"
+    notes: "Verified live (192 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Plante Moran"
+    ats_provider: static
+    careers_url: "https://www.plantemoran.com/explore-our-firm/careers"
+    enabled: false
+    priority: 189
+    student_interest_rank: 189
+    student_interest_count: 3
+    industry: "Accounting / Professional Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Republic Airways"
+    ats_provider: static
+    careers_url: "https://www.rjet.com/careers"
+    enabled: false
+    priority: 190
+    student_interest_rank: 190
+    student_interest_count: 3
+    industry: "Aviation / Transportation"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Rolls-Royce"
+    ats_provider: static
+    careers_url: "https://careers.rolls-royce.com/usa"
+    enabled: false
+    priority: 191
+    student_interest_rank: 191
+    student_interest_count: 3
+    industry: "Aerospace / Defense"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Shopify"
+    ats_provider: static
+    careers_url: "https://www.shopify.com/careers"
+    enabled: false
+    priority: 192
+    student_interest_rank: 192
+    student_interest_count: 3
+    industry: "E-commerce / Retail Tech"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'failed', 404)]
+
+  - company_name: "Simon-Kucher"
+    ats_provider: static
+    careers_url: "https://www.simon-kucher.com/en/careers"
+    enabled: false
+    priority: 193
+    student_interest_rank: 193
+    student_interest_count: 3
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "State Farm"
+    ats_provider: static
+    careers_url: "https://jobs.statefarm.com/main/"
+    enabled: false
+    priority: 194
+    student_interest_rank: 194
+    student_interest_count: 3
+    industry: "Insurance"
+    verification_status: unsupported
+    unsupported_reason: >-
+      iCIMS-hosted portal; the iCIMS Job Portal API requires a customer partnership and there is no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['icims']
+
+  - company_name: "T-Mobile"
+    ats_provider: workday
+    careers_url: "https://careers.t-mobile.com/job-search/"
+    enabled: false
+    priority: 195
+    student_interest_rank: 195
+    student_interest_count: 3
+    industry: "Telecommunications"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "TD Bank Group"
+    ats_provider: workday
+    host: "td.wd3.myworkdayjobs.com"
+    tenant: td
+    site: TD_Bank_Careers
+    careers_url: "https://jobs.td.com/en/"
+    enabled: true
+    priority: 196
+    student_interest_rank: 196
+    student_interest_count: 3
+    industry: "Financial Services / Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://td.wd3.myworkdayjobs.com/wday/cxs/td/TD_Bank_Careers/jobs"
+    notes: "Verified live (1547 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Coca-Cola"
+    ats_provider: static
+    careers_url: "https://careers.coca-colacompany.com/"
+    enabled: false
+    priority: 197
+    student_interest_rank: 197
+    student_interest_count: 3
+    industry: "Beverages / Consumer Goods"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "The Home Depot"
+    ats_provider: workday
+    host: "homedepot.wd5.myworkdayjobs.com"
+    tenant: homedepot
+    site: CareerDepot
+    careers_url: "https://careers.homedepot.com/"
+    enabled: true
+    priority: 198
+    student_interest_rank: 198
+    student_interest_count: 3
+    industry: "Retail / Home Improvement"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://homedepot.wd5.myworkdayjobs.com/wday/cxs/homedepot/CareerDepot/jobs"
+    notes: "Verified live (965 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "UBS"
+    ats_provider: static
+    careers_url: "https://jobs.ubs.com/"
+    enabled: false
+    priority: 199
+    student_interest_rank: 199
+    student_interest_count: 3
+    industry: "Financial Services / Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Uline"
+    ats_provider: static
+    careers_url: "https://www.uline.jobs/"
+    enabled: false
+    priority: 200
+    student_interest_rank: 200
+    student_interest_count: 3
+    industry: "Distribution / Logistics"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Vanguard"
+    ats_provider: workday
+    host: "vanguard.wd5.myworkdayjobs.com"
+    tenant: vanguard
+    site: vanguard_external
+    careers_url: "https://www.vanguardjobs.com/"
+    enabled: true
+    priority: 201
+    student_interest_rank: 201
+    student_interest_count: 3
+    industry: "Financial Services / Investment Management"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://vanguard.wd5.myworkdayjobs.com/wday/cxs/vanguard/vanguard_external/jobs"
+    notes: "Verified live (454 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "3M"
+    ats_provider: workday
+    host: "3m.wd1.myworkdayjobs.com"
+    tenant: 3m
+    site: Search
+    careers_url: "https://www.3m.com/3M/en_US/careers-us/"
+    enabled: true
+    priority: 202
+    student_interest_rank: 202
+    student_interest_count: 2
+    industry: "Manufacturing / Industrial / Consumer Products"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://3m.wd1.myworkdayjobs.com/wday/cxs/3m/Search/jobs"
+    notes: "Verified live (691 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Airtable"
+    ats_provider: greenhouse
+    ats_slug: airtable
+    careers_url: "https://airtable.com/careers"
+    enabled: true
+    priority: 203
+    student_interest_rank: 203
+    student_interest_count: 2
+    industry: "Software (Productivity / Collaboration Tools)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/airtable/jobs"
+    notes: "Verified live (37 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Alibaba"
+    ats_provider: static
+    careers_url: "https://talent.alibaba.com/"
+    enabled: false
+    priority: 204
+    student_interest_rank: 204
+    student_interest_count: 2
+    industry: "E-commerce / Technology"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Altria"
+    ats_provider: static
+    careers_url: "https://www.altria.com/careers"
+    enabled: false
+    priority: 205
+    student_interest_rank: 205
+    student_interest_count: 2
+    industry: "Tobacco / Consumer Goods"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Amazon Web Services"
+    ats_provider: static
+    careers_url: "https://aws.amazon.com/careers/"
+    enabled: false
+    priority: 206
+    student_interest_rank: 206
+    student_interest_count: 2
+    industry: "Cloud Computing / Technology"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "AMEND Consulting"
+    ats_provider: greenhouse
+    ats_slug: amendconsulting
+    careers_url: "https://amendllc.com/careers/"
+    enabled: true
+    priority: 207
+    student_interest_rank: 207
+    student_interest_count: 2
+    industry: "Management Consulting"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/amendconsulting/jobs"
+    notes: "Verified live (12 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "ASML"
+    ats_provider: static
+    careers_url: "https://www.asml.com/en/careers"
+    enabled: false
+    priority: 208
+    student_interest_rank: 208
+    student_interest_count: 2
+    industry: "Semiconductors / Technology"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Atrium Health"
+    ats_provider: workday
+    host: "aah.wd5.myworkdayjobs.com"
+    tenant: aah
+    site: External
+    careers_url: "https://careers.atriumhealth.org/"
+    enabled: true
+    priority: 209
+    student_interest_rank: 209
+    student_interest_count: 2
+    industry: "Healthcare"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://aah.wd5.myworkdayjobs.com/wday/cxs/aah/External/jobs"
+    notes: "Verified live (2000 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Audi"
+    ats_provider: static
+    careers_url: "https://www.audiusa.com/us/web/en/about/careers.html"
+    enabled: false
+    priority: 210
+    student_interest_rank: 210
+    student_interest_count: 2
+    industry: "Automotive / Manufacturing"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Avant"
+    ats_provider: static
+    careers_url: "https://www.avant.com/careers/"
+    enabled: false
+    priority: 211
+    student_interest_rank: 211
+    student_interest_count: 2
+    industry: "Fintech / Consumer Lending"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'failed', 404)]
+
+  - company_name: "BearingPoint"
+    ats_provider: static
+    careers_url: "https://www.bearingpoint.com/en/careers/"
+    enabled: false
+    priority: 212
+    student_interest_rank: 212
+    student_interest_count: 2
+    industry: "Management Consulting / IT Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Biogen"
+    ats_provider: static
+    careers_url: "https://careers.biogen.com/"
+    enabled: false
+    priority: 213
+    student_interest_rank: 213
+    student_interest_count: 2
+    industry: "Biotechnology / Pharmaceuticals"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Blue Cross Blue Shield"
+    ats_provider: workday
+    host: "bcbsa.wd1.myworkdayjobs.com"
+    tenant: bcbsa
+    site: Careers
+    careers_url: "https://www.bcbs.com/careers"
+    enabled: true
+    priority: 214
+    student_interest_rank: 214
+    student_interest_count: 2
+    industry: "Health Insurance"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://bcbsa.wd1.myworkdayjobs.com/wday/cxs/bcbsa/Careers/jobs"
+    notes: "Verified live (18 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "BNY Mellon"
+    ats_provider: oraclecloud
+    host: "eofe.fa.us2.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://www.bny.com/corporate/global/en/careers.html"
+    enabled: true
+    priority: 215
+    student_interest_rank: 215
+    student_interest_count: 2
+    industry: "Financial Services / Investment Management"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://eofe.fa.us2.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Verified live (1679 postings at verification)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Boston Red Sox"
+    ats_provider: lever
+    ats_slug: redsox
+    careers_url: "https://www.mlb.com/redsox/team/jobs"
+    enabled: true
+    priority: 216
+    student_interest_rank: 216
+    student_interest_count: 2
+    industry: "Sports & Entertainment"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.lever.co/v0/postings/redsox?mode=json&limit=1"
+    notes: "Verified live (1 postings at verification)."
+    compliance_review: "Public Lever postings API verified."
+
+  - company_name: "Box"
+    ats_provider: greenhouse
+    ats_slug: boxinc
+    careers_url: "https://www.box.com/careers"
+    enabled: true
+    priority: 217
+    student_interest_rank: 217
+    student_interest_count: 2
+    industry: "Software (Cloud Storage / Collaboration)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/boxinc/jobs"
+    notes: "Verified live (135 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Broadcom"
+    ats_provider: workday
+    host: "broadcom.wd1.myworkdayjobs.com"
+    tenant: broadcom
+    site: External_Career
+    careers_url: "https://www.broadcom.com/company/careers"
+    enabled: true
+    priority: 218
+    student_interest_rank: 218
+    student_interest_count: 2
+    industry: "Semiconductors / Technology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://broadcom.wd1.myworkdayjobs.com/wday/cxs/broadcom/External_Career/jobs"
+    notes: "Verified live (316 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Bunzl"
+    ats_provider: static
+    careers_url: "https://careers.bunzldistribution.com/"
+    enabled: false
+    priority: 219
+    student_interest_rank: 219
+    student_interest_count: 2
+    industry: "Distribution / Supply Chain Solutions"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Canva"
+    ats_provider: static
+    careers_url: "https://www.lifeatcanva.com/en/jobs/"
+    enabled: false
+    priority: 220
+    student_interest_rank: 220
+    student_interest_count: 2
+    industry: "Software (Design / Productivity Tools)"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('lever', 'failed', 404)]
+
+  - company_name: "CBRE"
+    ats_provider: workday
+    careers_url: "https://careers.cbre.com/en_US/careers"
+    enabled: false
+    priority: 221
+    student_interest_rank: 221
+    student_interest_count: 2
+    industry: "Commercial Real Estate Services"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Cerner"
+    ats_provider: static
+    careers_url: "https://www.oracle.com/health/careers/"
+    enabled: false
+    priority: 222
+    student_interest_rank: 222
+    student_interest_count: 2
+    industry: "Healthcare IT (now Oracle Health)"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Hires through the already-enabled Oracle (rank 13) Oracle CE board (Oracle Health); kept disabled so the shared endpoint is not fetched twice (2026-07-08).
+
+  - company_name: "Chevrolet"
+    ats_provider: static
+    careers_url: "https://search-careers.gm.com/en/jobs/"
+    enabled: false
+    priority: 223
+    student_interest_rank: 223
+    student_interest_count: 2
+    industry: "Automotive / Manufacturing"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Hires through the already-enabled General Motors (rank 56) Workday board; kept disabled so the shared endpoint is not fetched twice (2026-07-08).
+
+  - company_name: "Cintas"
+    ats_provider: static
+    careers_url: "https://careers.cintas.com/"
+    enabled: false
+    priority: 224
+    student_interest_rank: 224
+    student_interest_count: 2
+    industry: "Business Services / Uniforms"
+    verification_status: unsupported
+    unsupported_reason: >-
+      SAP SuccessFactors portal; no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['successfactors']
+
+  - company_name: "Clarkston Consulting"
+    ats_provider: static
+    careers_url: "https://clarkstonconsulting.com/careers/"
+    enabled: false
+    priority: 225
+    student_interest_rank: 225
+    student_interest_count: 2
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Cleveland Clinic"
+    ats_provider: workday
+    host: "ccf.wd1.myworkdayjobs.com"
+    tenant: ccf
+    site: ClevelandClinicCareers
+    careers_url: "https://jobs.clevelandclinic.org/"
+    enabled: true
+    priority: 226
+    student_interest_rank: 226
+    student_interest_count: 2
+    industry: "Healthcare / Hospitals"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://ccf.wd1.myworkdayjobs.com/wday/cxs/ccf/ClevelandClinicCareers/jobs"
+    notes: "Verified live (1935 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Cook Medical"
+    ats_provider: static
+    careers_url: "https://www.cookmedical.com/careers/"
+    enabled: false
+    priority: 228
+    student_interest_rank: 228
+    student_interest_count: 2
+    industry: "Healthcare / Medical Devices"
+    verification_status: unsupported
+    unsupported_reason: >-
+      iCIMS-hosted portal; the iCIMS Job Portal API requires a customer partnership and there is no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['icims']
+
+  - company_name: "Credera"
+    ats_provider: static
+    careers_url: "https://www.credera.com/careers"
+    enabled: false
+    priority: 229
+    student_interest_rank: 229
+    student_interest_count: 2
+    industry: "Management Consulting / IT Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "DoorDash"
+    ats_provider: greenhouse
+    ats_slug: doordashusa
+    careers_url: "https://careersatdoordash.com/"
+    enabled: true
+    priority: 230
+    student_interest_rank: 230
+    student_interest_count: 2
+    industry: "Food Delivery / Technology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/doordashusa/jobs"
+    notes: "Verified live (454 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Duolingo"
+    ats_provider: greenhouse
+    ats_slug: duolingo
+    careers_url: "https://careers.duolingo.com/"
+    enabled: true
+    priority: 231
+    student_interest_rank: 231
+    student_interest_count: 2
+    industry: "EdTech / Language Learning"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/duolingo/jobs"
+    notes: "Verified live (68 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "DXC Technology"
+    ats_provider: workday
+    host: "dxctechnology.wd1.myworkdayjobs.com"
+    tenant: dxctechnology
+    site: DXCJobs
+    careers_url: "https://careers.dxc.com/global/en"
+    enabled: true
+    priority: 232
+    student_interest_rank: 232
+    student_interest_count: 2
+    industry: "IT Services / Consulting"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://dxctechnology.wd1.myworkdayjobs.com/wday/cxs/dxctechnology/DXCJobs/jobs"
+    notes: "Verified live (1269 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "eBay"
+    ats_provider: workday
+    careers_url: "https://jobs.ebayinc.com/us/en"
+    enabled: false
+    priority: 233
+    student_interest_rank: 233
+    student_interest_count: 2
+    industry: "E-commerce"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 422 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "Elanco"
+    ats_provider: workday
+    careers_url: "https://careers.elanco.com/us/en"
+    enabled: false
+    priority: 234
+    student_interest_rank: 234
+    student_interest_count: 2
+    industry: "Animal Health / Pharmaceuticals"
+    verification_status: pending
+    notes: >-
+      Workday host responds but probed tenant/site returned HTTP 404 (2026-07-08); needs the correct site id before enabling.
+
+  - company_name: "EXL Service"
+    ats_provider: oraclecloud
+    host: "fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com"
+    site: CX_2
+    careers_url: "https://www.exlservice.com/careers"
+    enabled: true
+    priority: 236
+    student_interest_rank: 236
+    student_interest_count: 2
+    industry: "Business Process Outsourcing / Analytics"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://fa-ewjt-saasfaprod1.fa.ocs.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_2,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Verified live (2979 postings at verification)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "ExxonMobil"
+    ats_provider: static
+    careers_url: "https://jobs.exxonmobil.com/"
+    enabled: false
+    priority: 237
+    student_interest_rank: 237
+    student_interest_count: 2
+    industry: "Oil & Gas / Energy"
+    verification_status: unsupported
+    unsupported_reason: >-
+      SAP SuccessFactors portal; no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['successfactors']
+
+  - company_name: "F5"
+    ats_provider: workday
+    host: "ffive.wd5.myworkdayjobs.com"
+    tenant: ffive
+    site: f5jobs
+    careers_url: "https://www.f5.com/company/careers"
+    enabled: true
+    priority: 238
+    student_interest_rank: 238
+    student_interest_count: 2
+    industry: "Software (Networking / Cloud)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://ffive.wd5.myworkdayjobs.com/wday/cxs/ffive/f5jobs/jobs"
+    notes: "Verified live (266 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Fischer Homes"
+    ats_provider: static
+    careers_url: "https://www.fischerhomes.com/careers/"
+    enabled: false
+    priority: 239
+    student_interest_rank: 239
+    student_interest_count: 2
+    industry: "Residential Construction / Real Estate"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Formstack"
+    ats_provider: ashby
+    ats_slug: Intellistack
+    careers_url: "https://www.formstack.com/careers"
+    enabled: true
+    priority: 240
+    student_interest_rank: 240
+    student_interest_count: 2
+    industry: "Software (Productivity / Forms Automation)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.ashbyhq.com/posting-api/job-board/Intellistack"
+    notes: "Verified live (6 postings at verification)."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "Fractal Analytics"
+    ats_provider: workday
+    host: "fractal.wd1.myworkdayjobs.com"
+    tenant: fractal
+    site: Careers
+    careers_url: "https://fractal.ai/careers/"
+    enabled: true
+    priority: 241
+    student_interest_rank: 241
+    student_interest_count: 2
+    industry: "Data Analytics / AI Consulting"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://fractal.wd1.myworkdayjobs.com/wday/cxs/fractal/Careers/jobs"
+    notes: "Verified live (116 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Gap"
+    ats_provider: static
+    careers_url: "https://www.gapinc.com/en-us/careers"
+    enabled: false
+    priority: 242
+    student_interest_rank: 242
+    student_interest_count: 2
+    industry: "Retail / Apparel"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Globant"
+    ats_provider: static
+    careers_url: "https://www.globant.com/careers"
+    enabled: false
+    priority: 243
+    student_interest_rank: 243
+    student_interest_count: 2
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Grubhub"
+    ats_provider: workday
+    host: "wonder.wd1.myworkdayjobs.com"
+    tenant: wonder
+    site: Grubhub_Careers
+    careers_url: "https://careers.grubhub.com/"
+    enabled: true
+    priority: 244
+    student_interest_rank: 244
+    student_interest_count: 2
+    industry: "Food Delivery / Technology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://wonder.wd1.myworkdayjobs.com/wday/cxs/wonder/Grubhub_Careers/jobs"
+    notes: "Verified live (41 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Health Catalyst"
+    ats_provider: static
+    careers_url: "https://www.healthcatalyst.com/careers"
+    enabled: false
+    priority: 245
+    student_interest_rank: 245
+    student_interest_count: 2
+    industry: "Healthcare IT / Analytics"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'failed', 404)]
+
+  - company_name: "HealthScape Advisors"
+    ats_provider: static
+    careers_url: "https://healthscape.com/careers/"
+    enabled: false
+    priority: 246
+    student_interest_rank: 246
+    student_interest_count: 2
+    industry: "Healthcare Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Hexaware Technologies"
+    ats_provider: oraclecloud
+    host: "fa-etqo-saasfaprod1.fa.ocs.oraclecloud.com"
+    site: CX_1
+    careers_url: "https://hexaware.com/careers/"
+    enabled: true
+    priority: 248
+    student_interest_rank: 248
+    student_interest_count: 2
+    industry: "IT Services / Consulting"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://fa-etqo-saasfaprod1.fa.ocs.oraclecloud.com/hcmRestApi/resources/latest/recruitingCEJobRequisitions?onlyData=true&finder=findReqs;siteNumber=CX_1,limit=1,offset=0,sortBy=POSTING_DATES_DESC"
+    notes: "Verified live (205 postings at verification)."
+    compliance_review: "Public unauthenticated Oracle CE endpoint verified."
+
+  - company_name: "Hitachi Consulting"
+    ats_provider: static
+    careers_url: "https://www.hitachivantara.com/en-us/company/careers"
+    enabled: false
+    priority: 249
+    student_interest_rank: 249
+    student_interest_count: 2
+    industry: "Management Consulting / IT Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Hires through the already-enabled Hitachi Vantara (rank 174); absorbed in 2020; kept disabled so the shared endpoint is not fetched twice (2026-07-08).
+
+  - company_name: "Infor"
+    ats_provider: static
+    careers_url: "https://www.infor.com/about/careers"
+    enabled: false
+    priority: 250
+    student_interest_rank: 250
+    student_interest_count: 2
+    industry: "Software (Enterprise Resource Planning)"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Insight Global"
+    ats_provider: static
+    careers_url: "https://jobs.insightglobal.com/"
+    enabled: false
+    priority: 251
+    student_interest_rank: 251
+    student_interest_count: 2
+    industry: "Staffing / Recruiting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      iCIMS-hosted portal; the iCIMS Job Portal API requires a customer partnership and there is no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['icims']
+
+  - company_name: "John Hancock"
+    ats_provider: static
+    careers_url: "https://careers.manulife.com/global/en/john-hancock"
+    enabled: false
+    priority: 252
+    student_interest_rank: 252
+    student_interest_count: 2
+    industry: "Financial Services / Insurance"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Kroll"
+    ats_provider: static
+    careers_url: "https://careers.kroll.com/"
+    enabled: false
+    priority: 253
+    student_interest_rank: 253
+    student_interest_count: 2
+    industry: "Risk Advisory / Financial Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Logitech"
+    ats_provider: static
+    careers_url: "https://jobs.jobvite.com/logitech/"
+    enabled: false
+    priority: 254
+    student_interest_rank: 254
+    student_interest_count: 2
+    industry: "Technology / Consumer Electronics"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Lowe's"
+    ats_provider: static
+    careers_url: "https://talent.lowes.com/us/en"
+    enabled: false
+    priority: 255
+    student_interest_rank: 255
+    student_interest_count: 2
+    industry: "Retail / Home Improvement"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted portal without exposed Workday apply links; no public JSON board detected (2026-07-08).
+    # detected markers: ['phenom']
+
+  - company_name: "Lumen Technologies"
+    ats_provider: static
+    careers_url: "https://jobs.lumen.com/global/en"
+    enabled: false
+    priority: 256
+    student_interest_rank: 256
+    student_interest_count: 2
+    industry: "Telecommunications"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Marsh McLennan"
+    ats_provider: static
+    careers_url: "https://careers.marshmclennan.com/global/en/search-results"
+    enabled: false
+    priority: 257
+    student_interest_rank: 257
+    student_interest_count: 2
+    industry: "Professional Services / Risk Management"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Hires through the already-enabled Oliver Wyman (rank 59) entry on the shared MMC Workday board; kept disabled so the shared endpoint is not fetched twice (2026-07-08).
+
+  - company_name: "Micron"
+    ats_provider: workday
+    host: "micron.wd1.myworkdayjobs.com"
+    tenant: micron
+    site: External
+    careers_url: "https://careers.micron.com/careers"
+    enabled: true
+    priority: 258
+    student_interest_rank: 258
+    student_interest_count: 2
+    industry: "Semiconductors"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://micron.wd1.myworkdayjobs.com/wday/cxs/micron/External/jobs"
+    notes: "Verified live (2898 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Moderna"
+    ats_provider: workday
+    host: "modernatx.wd1.myworkdayjobs.com"
+    tenant: modernatx
+    site: M_tx
+    careers_url: "https://www.modernatx.com/careers/"
+    enabled: true
+    priority: 259
+    student_interest_rank: 259
+    student_interest_count: 2
+    industry: "Pharmaceuticals / Biotechnology"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://modernatx.wd1.myworkdayjobs.com/wday/cxs/modernatx/M_tx/jobs"
+    notes: "Verified live (180 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "National Football League"
+    ats_provider: greenhouse
+    ats_slug: nflcareers
+    careers_url: "https://www.nfl.com/careers/"
+    enabled: true
+    priority: 260
+    student_interest_rank: 260
+    student_interest_count: 2
+    industry: "Sports & Entertainment"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/nflcareers/jobs"
+    notes: "Verified live (46 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "New Balance"
+    ats_provider: static
+    careers_url: "https://jobs.newbalance.com/"
+    enabled: false
+    priority: 261
+    student_interest_rank: 261
+    student_interest_count: 2
+    industry: "Retail / Apparel / Footwear"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted portal without exposed Workday apply links; no public JSON board detected (2026-07-08).
+    # detected markers: ['phenom']
+
+  - company_name: "Nucor"
+    ats_provider: static
+    careers_url: "https://careers.nucor.com/"
+    enabled: false
+    priority: 262
+    student_interest_rank: 262
+    student_interest_count: 2
+    industry: "Manufacturing / Steel"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Nutanix"
+    ats_provider: static
+    careers_url: "https://careers.nutanix.com/en"
+    enabled: false
+    priority: 263
+    student_interest_rank: 263
+    student_interest_count: 2
+    industry: "Software / Cloud Infrastructure"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Okta"
+    ats_provider: greenhouse
+    ats_slug: okta
+    careers_url: "https://www.okta.com/company/careers/"
+    enabled: true
+    priority: 264
+    student_interest_rank: 264
+    student_interest_count: 2
+    industry: "Cybersecurity / Identity Management"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/okta/jobs"
+    notes: "Verified live (355 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "PayPal"
+    ats_provider: workday
+    host: "paypal.wd1.myworkdayjobs.com"
+    tenant: paypal
+    site: jobs
+    careers_url: "https://careers.pypl.com/home/"
+    enabled: true
+    priority: 265
+    student_interest_rank: 265
+    student_interest_count: 2
+    industry: "Financial Services / Payments"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://paypal.wd1.myworkdayjobs.com/wday/cxs/paypal/jobs/jobs"
+    notes: "Verified live (167 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Perficient"
+    ats_provider: static
+    careers_url: "https://www.perficient.com/careers"
+    enabled: false
+    priority: 266
+    student_interest_rank: 266
+    student_interest_count: 2
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "PNC Financial Services"
+    ats_provider: workday
+    host: "pnc.wd5.myworkdayjobs.com"
+    tenant: pnc
+    site: External
+    careers_url: "https://careers.pnc.com/global/en"
+    enabled: true
+    priority: 267
+    student_interest_rank: 267
+    student_interest_count: 2
+    industry: "Financial Services / Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://pnc.wd5.myworkdayjobs.com/wday/cxs/pnc/External/jobs"
+    notes: "Verified live (2000 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Premier Irrigation Adritec Pvt Ltd"
+    ats_provider: static
+    careers_url: "https://www.premierirrigation.com/"
+    enabled: false
+    priority: 268
+    student_interest_rank: 268
+    student_interest_count: 2
+    industry: "Agriculture / Irrigation Solutions"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Publicis Groupe"
+    ats_provider: static
+    careers_url: "https://www.publicisgroupe.com/en/careers"
+    enabled: false
+    priority: 269
+    student_interest_rank: 269
+    student_interest_count: 2
+    industry: "Advertising / Media"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "RBW Consulting"
+    ats_provider: static
+    careers_url: "https://rbwconsulting.com/careers/"
+    enabled: false
+    priority: 270
+    student_interest_rank: 270
+    student_interest_count: 2
+    industry: "Life Sciences Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Red Hat"
+    ats_provider: workday
+    host: "redhat.wd5.myworkdayjobs.com"
+    tenant: redhat
+    site: jobs
+    careers_url: "https://www.redhat.com/en/jobs"
+    enabled: true
+    priority: 271
+    student_interest_rank: 271
+    student_interest_count: 2
+    industry: "Software / Open Source Solutions"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://redhat.wd5.myworkdayjobs.com/wday/cxs/redhat/jobs/jobs"
+    notes: "Verified live (236 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "REI"
+    ats_provider: static
+    careers_url: "https://rei.jobs/"
+    enabled: false
+    priority: 272
+    student_interest_rank: 272
+    student_interest_count: 2
+    industry: "Retail / Outdoor Recreation"
+    verification_status: unsupported
+    unsupported_reason: >-
+      iCIMS-hosted portal; the iCIMS Job Portal API requires a customer partnership and there is no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['icims']
+
+  - company_name: "Resultant"
+    ats_provider: smartrecruiters
+    ats_slug: Resultant
+    careers_url: "https://resultant.com/careers/"
+    enabled: false
+    priority: 273
+    student_interest_rank: 273
+    student_interest_count: 2
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.smartrecruiters.com/v1/companies/Resultant/postings?limit=1"
+    unsupported_reason: >-
+      The documented SmartRecruiters Posting API responds publicly, but api.smartrecruiters.com robots.txt disallows all generic user agents and this pipeline respects robots.txt, so the runtime auto-skips it. Needs a GCS policy decision before enabling (6 postings confirmed 2026-07-08).
+
+  - company_name: "Riot Games"
+    ats_provider: greenhouse
+    ats_slug: riotgames
+    careers_url: "https://www.riotgames.com/en/work-with-us/jobs"
+    enabled: true
+    priority: 274
+    student_interest_rank: 274
+    student_interest_count: 2
+    industry: "Gaming / Entertainment"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/riotgames/jobs"
+    notes: "Verified live (165 postings at verification)."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Rippling"
+    ats_provider: static
+    careers_url: "https://www.rippling.com/careers"
+    enabled: false
+    priority: 275
+    student_interest_rank: 275
+    student_interest_count: 2
+    industry: "HR Tech / SaaS"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+    # probes: [('greenhouse', 'failed', 404)]
+
+  - company_name: "RTX Corporation"
+    ats_provider: static
+    careers_url: "https://careers.rtx.com/global/en/search-results"
+    enabled: false
+    priority: 276
+    student_interest_rank: 276
+    student_interest_count: 2
+    industry: "Aerospace / Defense"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Schneider Electric"
+    ats_provider: static
+    careers_url: "https://www.se.com/us/en/about-us/careers/overview.jsp"
+    enabled: false
+    priority: 277
+    student_interest_rank: 277
+    student_interest_count: 2
+    industry: "Energy Management / Industrial Automation"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Slack"
+    ats_provider: workday
+    host: "salesforce.wd12.myworkdayjobs.com"
+    tenant: salesforce
+    site: Slack
+    careers_url: "https://slack.com/careers"
+    enabled: true
+    priority: 278
+    student_interest_rank: 278
+    student_interest_count: 2
+    industry: "Software / Productivity Tools"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://salesforce.wd12.myworkdayjobs.com/wday/cxs/salesforce/Slack/jobs"
+    notes: "Verified live (10 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Snap"
+    ats_provider: static
+    careers_url: "https://careers.snap.com/jobs"
+    enabled: false
+    priority: 279
+    student_interest_rank: 279
+    student_interest_count: 2
+    industry: "Technology / Social Media"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Splunk"
+    ats_provider: static
+    careers_url: "https://www.splunk.com/en_us/careers/search-jobs.html"
+    enabled: false
+    priority: 280
+    student_interest_rank: 280
+    student_interest_count: 2
+    industry: "Software / Data Analytics"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Phenom-hosted portal without exposed Workday apply links; no public JSON board detected (2026-07-08).
+    # detected markers: ['phenom']
+
+  - company_name: "Sprinklr"
+    ats_provider: workday
+    host: "sprinklr.wd1.myworkdayjobs.com"
+    tenant: sprinklr
+    site: careers
+    careers_url: "https://www.sprinklr.com/careers/"
+    enabled: true
+    priority: 281
+    student_interest_rank: 281
+    student_interest_count: 2
+    industry: "Software / Customer Experience Management"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://sprinklr.wd1.myworkdayjobs.com/wday/cxs/sprinklr/careers/jobs"
+    notes: "Verified live (84 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Strategy&"
+    ats_provider: static
+    careers_url: "https://www.strategyand.pwc.com/gx/en/careers.html"
+    enabled: false
+    priority: 282
+    student_interest_rank: 282
+    student_interest_count: 2
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Hires through the already-enabled PwC (rank 3) Workday board; kept disabled so the shared endpoint is not fetched twice (2026-07-08).
+
+  - company_name: "Synergy Consulting"
+    ats_provider: static
+    careers_url: "https://synergyconsulting.ai/careers"
+    enabled: false
+    priority: 283
+    student_interest_rank: 283
+    student_interest_count: 2
+    industry: "Management Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Synergy Works Group"
+    ats_provider: static
+    careers_url: "https://www.synergyworksgroup.com/"
+    enabled: false
+    priority: 284
+    student_interest_rank: 284
+    student_interest_count: 2
+    industry: "Consulting / Engineering Services"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Tableau"
+    ats_provider: static
+    careers_url: "https://careers.salesforce.com/en/jobs/"
+    enabled: false
+    priority: 285
+    student_interest_rank: 285
+    student_interest_count: 2
+    industry: "Software / Data Visualization"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Hires through the already-enabled Salesforce (rank 10) Workday board; kept disabled so the shared endpoint is not fetched twice (2026-07-08).
+
+  - company_name: "Teladoc Health"
+    ats_provider: workday
+    host: "teladoc.wd503.myworkdayjobs.com"
+    tenant: teladoc
+    site: teladochealth_is_hiring
+    careers_url: "https://teladochealth.com/careers/"
+    enabled: true
+    priority: 286
+    student_interest_rank: 286
+    student_interest_count: 2
+    industry: "Healthcare / Telemedicine"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://teladoc.wd503.myworkdayjobs.com/wday/cxs/teladoc/teladochealth_is_hiring/jobs"
+    notes: "Verified live (54 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "The Hershey Company"
+    ats_provider: static
+    careers_url: "https://careers.thehersheycompany.com/"
+    enabled: false
+    priority: 287
+    student_interest_rank: 287
+    student_interest_count: 2
+    industry: "Consumer Packaged Goods / Food & Beverage"
+    verification_status: unsupported
+    unsupported_reason: >-
+      SAP SuccessFactors portal; no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['successfactors']
+
+  - company_name: "The Kraft Heinz Company"
+    ats_provider: static
+    careers_url: "https://careers.kraftheinz.com/"
+    enabled: false
+    priority: 288
+    student_interest_rank: 288
+    student_interest_count: 2
+    industry: "Consumer Packaged Goods / Food & Beverage"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Total Quality Logistics"
+    ats_provider: static
+    careers_url: "https://www.tql.com/careers"
+    enabled: false
+    priority: 289
+    student_interest_rank: 289
+    student_interest_count: 2
+    industry: "Logistics / Transportation"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Toyota Motor Corporation"
+    ats_provider: static
+    careers_url: "https://www.toyota.com/usa/careers/"
+    enabled: false
+    priority: 290
+    student_interest_rank: 290
+    student_interest_count: 2
+    industry: "Automotive / Manufacturing"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "U.S. Bank"
+    ats_provider: workday
+    host: "usbank.wd1.myworkdayjobs.com"
+    tenant: usbank
+    site: US_Bank_Careers
+    careers_url: "https://careers.usbank.com/global/en/search-results"
+    enabled: true
+    priority: 291
+    student_interest_rank: 291
+    student_interest_count: 2
+    industry: "Financial Services / Banking"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://usbank.wd1.myworkdayjobs.com/wday/cxs/usbank/US_Bank_Careers/jobs"
+    notes: "Verified live (1331 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Ulta Beauty"
+    ats_provider: static
+    careers_url: "https://careers.ulta.com/careers/"
+    enabled: false
+    priority: 292
+    student_interest_rank: 292
+    student_interest_count: 2
+    industry: "Retail / Beauty"
+    verification_status: unsupported
+    unsupported_reason: >-
+      iCIMS-hosted portal; the iCIMS Job Portal API requires a customer partnership and there is no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['icims']
+
+  - company_name: "Under Armour"
+    ats_provider: static
+    careers_url: "https://careers.underarmour.com/"
+    enabled: false
+    priority: 293
+    student_interest_rank: 293
+    student_interest_count: 2
+    industry: "Retail / Apparel / Footwear"
+    verification_status: unsupported
+    unsupported_reason: >-
+      SAP SuccessFactors portal; no unauthenticated public JSON board (2026-07-08).
+    # detected markers: ['successfactors']
+
+  - company_name: "Veeva Systems"
+    ats_provider: lever
+    ats_slug: veeva
+    careers_url: "https://careers.veeva.com/"
+    enabled: true
+    priority: 294
+    student_interest_rank: 294
+    student_interest_count: 2
+    industry: "Software / Life Sciences Cloud Solutions"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.lever.co/v0/postings/veeva?mode=json&limit=1"
+    notes: "Verified live (1 postings at verification)."
+    compliance_review: "Public Lever postings API verified."
+
+  - company_name: "Virtusa"
+    ats_provider: static
+    careers_url: "https://www.virtusa.com/careers"
+    enabled: false
+    priority: 295
+    student_interest_rank: 295
+    student_interest_count: 2
+    industry: "IT Services / Consulting"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "VMware"
+    ats_provider: static
+    careers_url: "https://www.broadcom.com/company/careers"
+    enabled: false
+    priority: 296
+    student_interest_rank: 296
+    student_interest_count: 2
+    industry: "Software / Cloud Computing & Virtualization"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "Warner Bros. Discovery"
+    ats_provider: workday
+    host: "warnerbros.wd5.myworkdayjobs.com"
+    tenant: warnerbros
+    site: global
+    careers_url: "https://careers.wbd.com/global/en/search-results"
+    enabled: true
+    priority: 297
+    student_interest_rank: 297
+    student_interest_count: 2
+    industry: "Media / Entertainment"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://warnerbros.wd5.myworkdayjobs.com/wday/cxs/warnerbros/global/jobs"
+    notes: "Verified live (438 postings at verification)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Whirlpool"
+    ats_provider: static
+    careers_url: "https://www.whirlpoolcareers.com/"
+    enabled: false
+    priority: 298
+    student_interest_rank: 298
+    student_interest_count: 2
+    industry: "Consumer Goods / Manufacturing"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  - company_name: "William Blair"
+    ats_provider: static
+    careers_url: "https://www.williamblair.com/Careers"
+    enabled: false
+    priority: 299
+    student_interest_rank: 299
+    student_interest_count: 2
+    industry: "Financial Services / Investment Banking"
+    verification_status: unsupported
+    unsupported_reason: >-
+      Avature-based custom portal; no public ATS JSON board (2026-07-08).
+    # detected markers: ['avature']
+
+  - company_name: "Zoho Corporation"
+    ats_provider: static
+    careers_url: "https://www.zoho.com/careers.html"
+    enabled: false
+    priority: 300
+    student_interest_rank: 300
+    student_interest_count: 2
+    industry: "Software / Business Applications"
+    verification_status: unsupported
+    unsupported_reason: >-
+      No public ATS endpoint detected on the careers site (2026-07-08).
+
+  # ===========================================================================
+  # ADDITIONAL VERIFIED EMPLOYERS (outside the LAMP ranked list)
+  # ===========================================================================
+
+  - company_name: "Mastercard"
+    ats_provider: workday
+    host: "mastercard.wd1.myworkdayjobs.com"
+    tenant: mastercard
+    site: CorporateCareers
+    careers_url: "https://careers.mastercard.com/"
+    enabled: true
+    priority: 55
+    student_interest_rank: 119
+    student_interest_count: 5
+    industry: "Financial Services / Payments"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://mastercard.wd1.myworkdayjobs.com/wday/cxs/mastercard/CorporateCareers/jobs"
+    notes: "Financial services; analyst/security/systems hiring (1,185 postings)."
+    compliance_review: "Public Workday cxs endpoint verified; low request volume."
+
+  - company_name: "Stripe"
+    ats_provider: greenhouse
+    ats_slug: stripe
+    careers_url: "https://stripe.com/jobs/search"
+    priority: 60
+    enabled: true
+    student_interest_rank: 154
+    student_interest_count: 4
+    industry: "Financial Services / Payments"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/stripe/jobs"
+    notes: "Fintech; strong data/analytics, risk, and platform roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Databricks"
+    ats_provider: greenhouse
+    ats_slug: databricks
+    careers_url: "https://www.databricks.com/company/careers/open-positions"
+    priority: 60
+    enabled: true
+    student_interest_rank: 137
+    student_interest_count: 4
+    industry: "Software (Data & AI)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/databricks/jobs"
+    notes: "Data + AI platform; analytics/data engineering heavy."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Datadog"
+    ats_provider: greenhouse
+    ats_slug: datadog
+    careers_url: "https://careers.datadoghq.com/"
+    priority: 62
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/datadog/jobs"
+    notes: "Observability/cloud/security; solutions and analytics roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Cloudflare"
+    ats_provider: greenhouse
+    ats_slug: cloudflare
+    careers_url: "https://www.cloudflare.com/careers/jobs/"
+    priority: 62
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/cloudflare/jobs"
+    notes: "Cloud + security platform; security and solutions engineering."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Coinbase"
+    ats_provider: greenhouse
+    ats_slug: coinbase
+    careers_url: "https://www.coinbase.com/careers/positions"
+    priority: 64
+    enabled: true
+    student_interest_rank: 227
+    student_interest_count: 2
+    industry: "Fintech / Cryptocurrency"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/coinbase/jobs"
+    notes: "Fintech; security, risk, and data roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Airbnb"
+    ats_provider: greenhouse
+    ats_slug: airbnb
+    careers_url: "https://careers.airbnb.com/"
+    priority: 64
+    enabled: true
+    student_interest_rank: 96
+    student_interest_count: 6
+    industry: "Hospitality / Travel Tech"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/airbnb/jobs"
+    notes: "Retail/travel tech; analytics, data, and platform roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Robinhood"
+    ats_provider: greenhouse
+    ats_slug: robinhood
+    careers_url: "https://careers.robinhood.com/"
+    priority: 66
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/robinhood/jobs"
+    notes: "Fintech; data, risk, and analytics roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Instacart"
+    ats_provider: greenhouse
+    ats_slug: instacart
+    careers_url: "https://instacart.careers/"
+    priority: 66
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/instacart/jobs"
+    notes: "Retail tech; analytics, data, and business systems roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "GitLab"
+    ats_provider: greenhouse
+    ats_slug: gitlab
+    careers_url: "https://about.gitlab.com/jobs/"
+    priority: 68
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/gitlab/jobs"
+    notes: "DevOps/platform/security; remote-friendly."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Discord"
+    ats_provider: greenhouse
+    ats_slug: discord
+    careers_url: "https://discord.com/careers"
+    priority: 68
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://boards-api.greenhouse.io/v1/boards/discord/jobs"
+    notes: "Consumer platform; data and platform roles."
+    compliance_review: "Public Greenhouse Boards API verified."
+
+  - company_name: "Palantir Technologies"
+    ats_provider: lever
+    ats_slug: palantir
+    careers_url: "https://jobs.lever.co/palantir"
+    priority: 60
+    enabled: true
+    student_interest_rank: 104
+    student_interest_count: 6
+    industry: "Software / Data Analytics"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.lever.co/v0/postings/palantir?mode=json"
+    notes: "Data/deployment/consulting-style roles; strong analytics fit."
+    compliance_review: "Public Lever postings API verified."
+
+  - company_name: "Plaid"
+    ats_provider: ashby
+    ats_slug: plaid
+    careers_url: "https://plaid.com/careers/"
+    priority: 62
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.ashbyhq.com/posting-api/job-board/plaid"
+    notes: "Fintech; data, risk, and security roles. Migrated from Lever to Ashby (Lever board now empty; Ashby board has 106 postings)."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "OpenAI"
+    ats_provider: ashby
+    ats_slug: openai
+    careers_url: "https://openai.com/careers/search/"
+    priority: 60
+    enabled: true
+    student_interest_rank: 92
+    student_interest_count: 7
+    industry: "Artificial Intelligence / Research"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.ashbyhq.com/posting-api/job-board/openai"
+    notes: "AI/data roles; relevant to Data Analytics and AI and IS Research."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "Ramp"
+    ats_provider: ashby
+    ats_slug: ramp
+    careers_url: "https://ramp.com/careers"
+    priority: 64
+    enabled: true
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.ashbyhq.com/posting-api/job-board/ramp"
+    notes: "Fintech; data, analytics, and business systems roles."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "Notion"
+    ats_provider: ashby
+    ats_slug: notion
+    careers_url: "https://www.notion.so/careers"
+    priority: 68
+    enabled: true
+    student_interest_rank: 150
+    student_interest_count: 4
+    industry: "Software (Productivity Tools)"
+    verification_status: verified
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.ashbyhq.com/posting-api/job-board/notion"
+    notes: "Product/platform/data roles."
+    compliance_review: "Public Ashby posting API verified."
+
+  - company_name: "Visa"
+    ats_provider: smartrecruiters
+    ats_slug: Visa
+    careers_url: "https://jobs.smartrecruiters.com/Visa"
+    priority: 58
+    enabled: false
+    student_interest_rank: 80
+    student_interest_count: 9
+    industry: "Financial Services / Payments"
+    verification_status: unsupported
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.smartrecruiters.com/v1/companies/Visa/postings?limit=1"
+    unsupported_reason: >-
+      SmartRecruiters Posting API responds publicly, but
+      api.smartrecruiters.com robots.txt disallows generic user agents; the
+      runtime robots policy was already auto-skipping this entry every run.
+      Needs a GCS policy decision before enabling.
+    notes: "Financial services; heavy analyst, security, and systems hiring."
+
+  - company_name: "Bosch"
+    ats_provider: smartrecruiters
+    ats_slug: BoschGroup
+    careers_url: "https://jobs.smartrecruiters.com/BoschGroup"
+    priority: 66
+    enabled: false
+    verification_status: unsupported
+    verified_at: "2026-07-08"
+    verification_source_url: "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings?limit=1"
+    unsupported_reason: >-
+      SmartRecruiters Posting API responds publicly, but
+      api.smartrecruiters.com robots.txt disallows generic user agents; the
+      runtime robots policy was already auto-skipping this entry every run.
+      Needs a GCS policy decision before enabling.
+    notes: "Global enterprise with US ops; IT/enterprise systems and data roles."

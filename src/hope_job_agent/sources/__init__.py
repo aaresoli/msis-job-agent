@@ -5,6 +5,10 @@ from hope_job_agent.sources.approved_json import (
     ApprovedJsonSourceError,
 )
 from hope_job_agent.sources.base import BaseJobSource
+from hope_job_agent.sources.company_careers import (
+    COMPANY_CAREERS_SOURCE_NAME,
+    CompanyCareersSource,
+)
 from hope_job_agent.sources.employer_careers import EmployerCareersSource
 from hope_job_agent.sources.handshake import HandshakeSource
 from hope_job_agent.sources.ksbit_export import (
@@ -17,14 +21,17 @@ from hope_job_agent.sources.registry import (
     SourceComplianceError,
     SourceMetadata,
     SourceStatus,
+    create_source_adapter,
     ensure_source_allowed,
     get_source_metadata,
 )
 
 __all__ = [
+    "COMPANY_CAREERS_SOURCE_NAME",
     "ApprovedJsonJobSource",
     "ApprovedJsonSourceError",
     "BaseJobSource",
+    "CompanyCareersSource",
     "EmployerCareersSource",
     "HandshakeSource",
     "KsbitExportSource",
@@ -34,6 +41,7 @@ __all__ = [
     "SourceComplianceError",
     "SourceMetadata",
     "SourceStatus",
+    "create_source_adapter",
     "ensure_source_allowed",
     "get_source_metadata",
 ]

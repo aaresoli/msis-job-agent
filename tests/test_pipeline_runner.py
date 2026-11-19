@@ -1,6 +1,12 @@
+from pathlib import Path
+
 from hope_job_agent.models.job import JobPosting
 from hope_job_agent.pipeline.runner import run_pipeline
 from hope_job_agent.sources.base import BaseJobSource
+from hope_job_agent.sources.ksbit_export import KSBIT_SOURCE_NAME
+from hope_job_agent.sources.registry import create_source_adapter
+
+SAMPLE_KSBIT_JOBS_PATH = Path("data/sample_ksbit_jobs.json")
 
 
 class FakeJobSource(BaseJobSource):
@@ -67,5 +73,24 @@ def test_run_pipeline_normalizes_validates_classifies_and_deduplicates(tmp_path)
     assert result.final_jobs[0].role_tags == ["Data Analyst / BI Engineer"]
     assert result.final_jobs[0].concentration_tags == [
         "Data Analytics and AI",
-        "Information Systems Research in AI",
+        "IS Research",
     ]
+
+
+def test_run_pipeline_accepts_registry_instantiated_ksbit_source(tmp_path):
+    source = create_source_adapter(KSBIT_SOURCE_NAME, SAMPLE_KSBIT_JOBS_PATH)
+    jobs = source.fetch_jobs()
+
+    assert isinstance(jobs, list)
+    assert jobs
+    assert all(isinstance(job, JobPosting) for job in jobs)
+
+    result = run_pipeline(
+        [source],
+        output_path=tmp_path / "ksbit_pipeline_results.json",
+        database_url=f"sqlite:///{(tmp_path / 'ksbit_pipeline.sqlite3').as_posix()}",
+    )
+
+    assert result.raw_count == len(jobs)
+    assert result.final_jobs
+    assert {job.source for job in result.final_jobs} == {KSBIT_SOURCE_NAME}

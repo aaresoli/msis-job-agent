@@ -1,14 +1,33 @@
 import csv
 import json
+from datetime import datetime
 
 import pytest
+from openpyxl import Workbook
 
+from hope_job_agent.models.job import JobPosting
 from hope_job_agent.pipeline.run_mvp import (
     MVP_OUTPUT_COLUMNS,
     MvpPipelineError,
     main,
     run_mvp_pipeline,
 )
+from hope_job_agent.sources.ksbit_export import KSBIT_SOURCE_NAME
+from hope_job_agent.sources.registry import create_source_adapter
+
+TWELVE_TWENTY_DRY_RUN_HEADERS = [
+    "Job Posting ID",
+    "Job Title",
+    "Company Name",
+    "Status",
+    "Posted Date",
+    "Job Description",
+    "Application URL",
+    "Location",
+    "Location Type",
+    "Job Type",
+    "Work Authorization Requirement",
+]
 
 
 def _write_jobs(path, jobs):
@@ -50,7 +69,7 @@ def _write_profiles(path):
                     {
                         "student_id": "student-002",
                         "name": "Security Student",
-                        "concentration": "Cybersecurity",
+                        "concentration": "Cybersecurity and Risk Analytics",
                         "academic_stage": "Incoming student (Fall)",
                         "target_roles": ["Cybersecurity Analyst"],
                         "skills": ["SIEM", "NIST"],
@@ -64,6 +83,40 @@ def _write_profiles(path):
         ),
         encoding="utf-8",
     )
+
+
+def _write_12twenty_xlsx(path, records):
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.append(TWELVE_TWENTY_DRY_RUN_HEADERS)
+    for record in records:
+        worksheet.append(
+            [record.get(header) for header in TWELVE_TWENTY_DRY_RUN_HEADERS]
+        )
+    workbook.save(path)
+
+
+def _xlsx_job(**overrides):
+    job = {
+        "Job Posting ID": "xlsx-data-001",
+        "Job Title": "Data Analyst Intern",
+        "Company Name": "Example Analytics",
+        "Status": "Application Open",
+        "Posted Date": datetime(2026, 6, 23, 6, 19, 59),
+        "Job Description": (
+            "<p>Analyze business data with SQL and Python dashboards.</p>"
+        ),
+        "Application URL": "https://example.com/12twenty/data-analyst-intern",
+        "Location": (
+            '{"Rank":0,"CountryName":"United States (USA)",'
+            '"CityName":"Bloomington - IN"}'
+        ),
+        "Location Type": "Specify Location(s)",
+        "Job Type": "Internship",
+        "Work Authorization Requirement": "All Work Authorizations Accepted",
+    }
+    job.update(overrides)
+    return job
 
 
 def _data_job(**overrides):
@@ -229,6 +282,80 @@ def test_mvp_dry_run_skips_output_and_database_writes(tmp_path):
     assert "Dry run requested" in result.summary["warnings"][-1]
 
 
+def test_mvp_dry_run_processes_ksbit_xlsx_end_to_end(tmp_path):
+    export_path = tmp_path / "12twenty_jobs.xlsx"
+    profiles_path = tmp_path / "profiles.json"
+    output_path = tmp_path / "ksbit_xlsx_results.csv"
+    database_path = tmp_path / "ksbit_xlsx.sqlite3"
+    _write_12twenty_xlsx(
+        export_path,
+        [
+            _xlsx_job(),
+            _xlsx_job(
+                **{
+                    "Job Posting ID": "xlsx-security-001",
+                    "Job Title": "Cybersecurity Analyst Intern",
+                    "Company Name": "Example Security",
+                    "Job Description": (
+                        "<p>Use SIEM and NIST controls to investigate risk.</p>"
+                    ),
+                    "Application URL": (
+                        "https://example.com/12twenty/security-analyst-intern"
+                    ),
+                    "Location": (
+                        '{"Rank":0,"CountryName":"United States (USA)",'
+                        '"CityName":"Indianapolis - IN"}'
+                    ),
+                }
+            ),
+        ],
+    )
+    _write_profiles(profiles_path)
+
+    source = create_source_adapter(KSBIT_SOURCE_NAME, export_path)
+    jobs = source.fetch_jobs()
+
+    assert len(jobs) == 2
+    assert all(isinstance(job, JobPosting) for job in jobs)
+    assert {job.source for job in jobs} == {KSBIT_SOURCE_NAME}
+    assert [job.source_job_id for job in jobs] == [
+        "xlsx-data-001",
+        "xlsx-security-001",
+    ]
+
+    result = run_mvp_pipeline(
+        source_name=KSBIT_SOURCE_NAME,
+        input_path=export_path,
+        profiles_path=profiles_path,
+        output_path=output_path,
+        dry_run=True,
+        database_url=f"sqlite:///{database_path.as_posix()}",
+    )
+
+    assert not output_path.exists()
+    assert not result.summary_path.exists()
+    assert not database_path.exists()
+    assert result.summary["source"] == KSBIT_SOURCE_NAME
+    assert result.summary["raw_count"] == 2
+    assert result.summary["normalized_count"] == 2
+    assert result.summary["invalid_count"] == 0
+    assert result.summary["duplicate_count"] == 0
+    assert result.summary["unique_count"] == 2
+    assert result.summary["classified_count"] == 2
+    assert result.summary["profile_count"] == 2
+    assert result.summary["active_profile_count"] == 2
+    assert result.summary["total_ranked_matches"] == 4
+    assert result.summary["errors"] == []
+    assert "Dry run requested" in result.summary["warnings"][-1]
+    assert len(result.rows) == 4
+    assert {row["source"] for row in result.rows} == {KSBIT_SOURCE_NAME}
+    assert {row["title"] for row in result.rows} == {
+        "Data Analyst Intern",
+        "Cybersecurity Analyst Intern",
+    }
+    assert all(row["apply_url/post_url"].startswith("https://") for row in result.rows)
+
+
 def test_mvp_runner_preflights_database_before_writing_outputs(tmp_path):
     jobs_path = tmp_path / "jobs.json"
     profiles_path = tmp_path / "profiles.json"
@@ -236,13 +363,14 @@ def test_mvp_runner_preflights_database_before_writing_outputs(tmp_path):
     _write_jobs(jobs_path, [_data_job()])
     _write_profiles(profiles_path)
 
-    with pytest.raises(MvpPipelineError, match="Only empty DATABASE_URL"):
+    with pytest.raises(MvpPipelineError, match="PostgreSQL persistence failed"):
         run_mvp_pipeline(
             source_name="approved_json",
             input_path=jobs_path,
             profiles_path=profiles_path,
             output_path=output_path,
             database_url="postgresql://user:password@example/jobs",
+            storage="postgres",
         )
 
     assert not output_path.exists()

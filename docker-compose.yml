@@ -1,11 +1,550 @@
+name: hope-career-intelligence
+
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-hope_user}:${POSTGRES_PASSWORD:-hope_password}@postgres:5432/${POSTGRES_DB:-hope_jobs}
+  REDIS_URL: redis://redis:6379/0
+  MINIO_ENDPOINT: minio:9000
+  MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-hope_minio}
+  MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-development-only-change-me}
+  MINIO_BUCKET: hope-private-documents
+  VLLM_BASE_URL: ${VLLM_BASE_URL:-http://vllm:8000}
+  VLLM_CHAT_MODEL: ${VLLM_CHAT_MODEL:-openai/gpt-oss-120b}
+  EMBEDDING_BASE_URL: ${EMBEDDING_BASE_URL:-http://embed:80}
+  EMBEDDING_MODEL: ${EMBEDDING_MODEL:-google/embeddinggemma-300m}
+  VLLM_MAX_MODEL_LEN: ${VLLM_MAX_MODEL_LEN:-16384}
+  VLLM_MAX_TOKENS: ${VLLM_MAX_TOKENS:-2048}
+  VLLM_INTERACTIVE_MAX_TOKENS: ${VLLM_INTERACTIVE_MAX_TOKENS:-1024}
+  # Empty on purpose for the batch queue: "low" nearly doubles enrichment
+  # throughput and costs three postings in forty to the review queue. See the
+  # measured table in docs/dgx_spark_deployment.md before changing it.
+  # `-` rather than `:-` so an explicitly empty value is honoured rather than
+  # being treated as unset.
+  VLLM_BATCH_REASONING: ${VLLM_BATCH_REASONING-}
+  VLLM_INTERACTIVE_REASONING: ${VLLM_INTERACTIVE_REASONING-medium}
+  VLLM_BATCH_CONCURRENCY: ${VLLM_BATCH_CONCURRENCY:-4}
+  VLLM_BATCH_PRIORITY: ${VLLM_BATCH_PRIORITY:-0}
+  VLLM_INTERACTIVE_PRIORITY: ${VLLM_INTERACTIVE_PRIORITY:--10}
+  VLLM_TIMEOUT_SECONDS: ${VLLM_TIMEOUT_SECONDS:-300}
+  EMBEDDING_DIMENSION: 768
+  APP_BASE_URL: ${APP_BASE_URL:-http://localhost:3000}
+  ENVIRONMENT: ${ENVIRONMENT:-development}
+  AUTH_PEPPER: ${AUTH_PEPPER:-development-only-change-me}
+  INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-development-only-change-me}
+  APIFY_WEBHOOK_SECRET: ${APIFY_WEBHOOK_SECRET:-}
+  APIFY_TOKEN: ${APIFY_TOKEN:-}
+  APIFY_ACTOR_ID: ${APIFY_ACTOR_ID:-cheap_scraper~linkedin-job-scraper}
+  APIFY_MAX_ITEMS: ${APIFY_MAX_ITEMS:-}
+  APIFY_POSTS_ACTOR_ID: ${APIFY_POSTS_ACTOR_ID:-apimaestro~linkedin-posts-search-scraper}
+  APIFY_POSTS_MAX_ITEMS: ${APIFY_POSTS_MAX_ITEMS:-}
+  SOURCE_APPROVAL_ID: ${SOURCE_APPROVAL_ID:-}
+  LANGGRAPH_DATABASE_URL: postgresql://${LANGGRAPH_POSTGRES_USER:-hope_langgraph}:${LANGGRAPH_POSTGRES_PASSWORD:-development-only-change-me}@postgres:5432/${LANGGRAPH_POSTGRES_DB:-hope_langgraph}
+  OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+  # Mail belongs in the shared anchor, not on `app` alone: the digest relay
+  # runs on a worker, so an app-only SMTP config meant magic links were sent
+  # and digests silently were not.
+  #
+  # Empty by default. An unset host means "mail disabled", which send_message
+  # handles gracefully; defaulting to a hostname that may not resolve would
+  # turn every digest into a dead-lettered outbox event instead. Local
+  # development points these at the mailpit container via .env.
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_STARTTLS: ${SMTP_STARTTLS:-true}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_FROM: ${SMTP_FROM:-HOPE Career Intelligence <no-reply@hope.local>}
+
 services:
   app:
     build: .
-    command: uvicorn hope_job_agent.main:app --host 0.0.0.0 --port 8000 --reload
-    env_file:
-      - .env.example
-    ports:
-      - "8000:8000"
+    profiles: ["platform"]
+    environment: *app-environment
+    command: uvicorn hope_job_agent.main:app --host 0.0.0.0 --port 8000
+    expose: ["8000"]
     volumes:
-      - ./src:/app/src
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      langgraph-init: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
+  migrate:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: alembic upgrade head
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  langgraph-init:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: python -m hope_job_agent.ai.checkpoints
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  web:
+    build: ./web
+    profiles: ["platform"]
+    environment:
+      HOPE_API_INTERNAL_URL: http://app:8000
+    expose: ["3000"]
+    depends_on:
+      app: { condition: service_healthy }
+    restart: unless-stopped
+
+  # A Celery worker serves no HTTP, so the HTTP healthcheck the Dockerfile
+  # defines for the API can never pass here. Inherited unchanged, it left every
+  # worker permanently "unhealthy" -- which is worse than no healthcheck at
+  # all, because it trains everyone to ignore the one signal that would show a
+  # real outage. Pinging the node by name (rather than bare `inspect ping`,
+  # which any responding worker satisfies) keeps each container reporting on
+  # itself.
+  worker-interactive:
+    build: .
+    profiles: ["platform"]
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q interactive --concurrency=2 --loglevel=INFO
+    healthcheck: &worker-healthcheck
+      test: ["CMD-SHELL", "celery -A hope_job_agent.workers.celery_app:celery_app inspect ping -d celery@$$(hostname) --timeout 10"]
+      interval: 30s
+      timeout: 15s
+      start_period: 30s
+      retries: 3
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with vLLM for the remainder and the GPU work is what suffers.
+    # Coach turns only: one stream at a time, concurrency 2.
+    mem_limit: 2g
+    restart: unless-stopped
+
+  worker-batch:
+    build: .
+    profiles: ["platform"]
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    # Four batch children fill the GPU while leaving vLLM headroom for the
+    # higher-priority interactive queue.
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q batch --concurrency=${VLLM_BATCH_CONCURRENCY:-4} --loglevel=INFO
+    healthcheck: *worker-healthcheck
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      # Chat and embed become healthy only after weights load; workers can start
+      # earlier and retry ModelUnavailable. required:false keeps platform-only up.
+      vllm: { condition: service_healthy, required: false }
+      embed: { condition: service_healthy, required: false }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with vLLM for the remainder and the GPU work is what suffers.
+    # Holds an embedding batch and a posting body per slot.
+    mem_limit: 4g
+    restart: unless-stopped
+
+  # Source crawls run on their own queue: they are long (tens of minutes for a
+  # full ATS sweep) and must not block enrichment/matching behind them.
+  worker-ingest:
+    build: .
+    profiles: ["platform"]
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q ingest --concurrency=1 --loglevel=INFO
+    healthcheck: *worker-healthcheck
+    volumes:
+      - ./config:/app/config:ro
+      - ./data:/app/data:ro
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with vLLM for the remainder and the GPU work is what suffers.
+    # A full ATS sweep buffers large JSON payloads per employer.
+    mem_limit: 4g
+    restart: unless-stopped
+
+  # Scheduled maintenance: the outbox relay, digests, backups, metric sampling.
+  # Its own queue so a thirty-second relay never waits behind a GPU-bound
+  # enrichment backlog or an hour-long ATS crawl.
+  worker-ops:
+    build: .
+    profiles: ["platform"]
+    environment:
+      <<: *app-environment
+      # prometheus_client reads this at import time. Celery's prefork children
+      # each write their metric files here and the parent sums them at scrape
+      # time; unset, every counter incremented in a worker is invisible. Set
+      # only on the workers -- the API is a single process, and multiprocess
+      # mode would change what its own /metrics reports.
+      PROMETHEUS_MULTIPROC_DIR: /tmp/prom
+    command: celery -A hope_job_agent.workers.celery_app:celery_app worker -Q ops --concurrency=2 --loglevel=INFO
+    healthcheck: *worker-healthcheck
+    expose: ["9100"]
+    tmpfs: ["/tmp/prom"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with vLLM for the remainder and the GPU work is what suffers.
+    # pg_dump/pg_restore and the gzip archive run in this container.
+    mem_limit: 6g
+    restart: unless-stopped
+
+  # The scheduler. Replaces nine n8n workflows that were inert by construction:
+  # they shipped inactive and only existed after a manual import. This starts
+  # with the platform profile and its schedule lives in
+  # src/hope_job_agent/workers/schedules.py.
+  #
+  # Exactly one replica. Two beats means every scheduled task fires twice.
+  beat:
+    build: .
+    profiles: ["platform"]
+    environment: *app-environment
+    command: celery -A hope_job_agent.workers.celery_app:celery_app beat --schedule /var/lib/celery/beat-schedule --loglevel=INFO
+    # The Dockerfile's HTTP healthcheck is for the API; beat serves nothing and
+    # would sit permanently unhealthy, which trains everyone to ignore the one
+    # signal that shows a real outage. Beat's liveness is
+    # hope_beat_heartbeat_timestamp_seconds and the HopeBeatDown alert -- a
+    # container-level check could not tell a running beat from a wedged one
+    # anyway.
+    healthcheck:
+      disable: true
+    volumes:
+      - hope_beat:/var/lib/celery
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    # Ceiling, not a reservation. The model budget in docs/dgx_spark_deployment.md
+    # accounts for ~96GB of the box; without a limit a runaway task here competes
+    # with vLLM for the remainder and the GPU work is what suffers.
+    # Emits schedule ticks and nothing else.
+    mem_limit: 512m
+    restart: unless-stopped
+
+  postgres:
+    # Upgraded from pg16. A Postgres major version cannot reuse an older data
+    # directory, and pg18 also relocated PGDATA (see the volume note below), so
+    # an existing hope_pgdata volume must be dumped and restored:
+    #
+    #   docker compose exec postgres pg_dumpall -U hope_user > backup.sql
+    #   docker compose down
+    #   docker volume rm hope-career-intelligence_hope_pgdata
+    #   docker compose --profile platform up -d postgres
+    #   docker compose exec -T postgres psql -U hope_user -d postgres < backup.sql
+    #   docker compose run --rm migrate
+    #   docker compose run --rm langgraph-init
+    #
+    # -d postgres is required: psql otherwise defaults to a database named
+    # after the user, and no hope_user database exists. pg_dumpall rather than
+    # pg_dump because the cluster also holds the langgraph and phoenix
+    # databases and their roles.
+    #
+    # Starting pg18 against a pg16 volume fails loudly rather than corrupting
+    # it, so a skipped dump costs downtime, not data.
+    image: pgvector/pgvector:pg18
+    container_name: hope_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-hope_jobs}
+      POSTGRES_USER: ${POSTGRES_USER:-hope_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hope_password}
+      LANGGRAPH_POSTGRES_DB: ${LANGGRAPH_POSTGRES_DB:-hope_langgraph}
+      LANGGRAPH_POSTGRES_USER: ${LANGGRAPH_POSTGRES_USER:-hope_langgraph}
+      LANGGRAPH_POSTGRES_PASSWORD: ${LANGGRAPH_POSTGRES_PASSWORD:-development-only-change-me}
+      PHOENIX_POSTGRES_DB: ${PHOENIX_POSTGRES_DB:-hope_phoenix}
+      PHOENIX_POSTGRES_USER: ${PHOENIX_POSTGRES_USER:-hope_phoenix}
+      PHOENIX_POSTGRES_PASSWORD: ${PHOENIX_POSTGRES_PASSWORD:-development-only-change-me}
+    ports: ["127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"]
+    volumes:
+      # PostgreSQL 18 moved PGDATA to /var/lib/postgresql/<major>/docker and
+      # declares its VOLUME at /var/lib/postgresql. Mounting .../data here
+      # would leave the real data directory on an anonymous volume.
+      - hope_pgdata:/var/lib/postgresql
+      - ./infra/postgres/init-databases.sh:/docker-entrypoint-initdb.d/10-hope-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-hope_user} -d ${POSTGRES_DB:-hope_jobs}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.2.2-alpine
+    command: redis-server --appendonly yes --maxmemory 2gb --maxmemory-policy allkeys-lru
+    volumes: ["hope_redis:/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-hope_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-development-only-change-me}
+    ports: ["127.0.0.1:9001:9001"]
+    volumes: ["hope_minio:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One continuously batched GPT-OSS engine serves batch and coach traffic.
+  # Priority scheduling reserves responsiveness without loading a second model.
+  #
+  # MEMORY, AND WHY THE NUMBERS BELOW ARE WHAT THEY ARE.
+  # The Spark has no discrete VRAM: GB10's 128GB LPDDR5X is *unified*, so every
+  # byte vLLM reserves is a byte taken from the host. `nvidia-smi` reports
+  # memory.total as [N/A] here for exactly that reason, which also means a GPU
+  # over-reservation does not fail the container — it takes the machine down.
+  # That is not hypothetical: at 0.82 this loaded all 60.77GiB of weights and
+  # then hard-killed the box (exit 128) at KV-cache allocation, three times.
+  #
+  # Budget against ~119.7GiB visible to CUDA:
+  #   0.62 * 119.7  = 74.2GiB ceiling for vLLM
+  #   - 60.8GiB       MXFP4 weights (measured, from the loader log)
+  #   - ~4GiB         activations, CUDA graphs, workspace
+  #   = ~9.4GiB       KV cache
+  # Working set needs far less than that ceiling. gpt-oss-120b alternates
+  # sliding (window 128) and full attention over 36 layers, so only the 18 full
+  # layers scale with context: 18 * 2 * 8 kv-heads * 64 dim * 2B = 36KiB/token.
+  # At max_model_len 16384 that is 576MiB/sequence, so max_num_seqs 8 needs
+  # 4.6GiB. The remaining ~4.8GiB is prefix-cache headroom, which is where the
+  # surplus actually earns its keep.
+  #
+  # This leaves ~45GiB for the host. 0.82 left ~21GiB and spent the difference
+  # on KV cache that max_num_seqs could never allocate — it bought nothing and
+  # cost the machine. Raise this only with `free -g` open, and never past 0.70.
+  vllm:
+    image: ${VLLM_IMAGE:-nvcr.io/nvidia/vllm:26.06-py3}
+    profiles: ["ai"]
+    gpus: all
+    # Single-GPU, tensor_parallel_size=1: /dev/shm is only used for worker
+    # handoff, not weights. 16gb was headroom for a sharded setup that does not
+    # exist here, and on unified memory an oversized tmpfs is host RAM at risk.
+    shm_size: 2gb
+    environment:
+      HF_HOME: /root/.cache/huggingface
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        export HF_TOKEN="$$(cat /run/secrets/hf_token)"
+        exec vllm serve "${VLLM_MODEL_ID:-openai/gpt-oss-120b}" \
+          --host 0.0.0.0 \
+          --port 8000 \
+          --served-model-name "${VLLM_CHAT_MODEL:-openai/gpt-oss-120b}" \
+          --max-model-len "${VLLM_MAX_MODEL_LEN:-16384}" \
+          --max-num-seqs "${VLLM_MAX_NUM_SEQS:-8}" \
+          --max-num-batched-tokens "${VLLM_MAX_NUM_BATCHED_TOKENS:-8192}" \
+          --gpu-memory-utilization "${VLLM_GPU_MEMORY_UTILIZATION:-0.62}" \
+          --enable-prefix-caching \
+          --enable-chunked-prefill \
+          --scheduling-policy priority \
+          --reasoning-parser openai_gptoss \
+          --enable-force-include-usage
+    volumes: ["hope_huggingface:/root/.cache/huggingface"]
+    secrets: [hf_token]
+    ports: ["127.0.0.1:${VLLM_HOST_PORT:-8001}:8000"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30m
+      retries: 10
+    # NOT `unless-stopped`. A start that exhausts unified memory takes the host
+    # with it, and a restart policy then re-runs the 6-minute, 60GiB load into
+    # the same wall — that is how one bad setting became three crashes in a day.
+    # `on-failure:1` retries a genuinely transient failure once and then stays
+    # down, leaving the machine up and the loader log intact to read.
+    restart: on-failure:1
+
+  # EmbeddingGemma runs on the ARM64 CPU TEI image, preserving GPU memory and
+  # the existing 768-d pgvector schema.
+  embed:
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-arm64-sha-30507cb@sha256:2873ddd3029bf6eed09c0befe737d88123107a0b89274b1552d68d1e3bb2a047}
+    profiles: ["ai"]
+    entrypoint: ["/bin/sh", "-c"]
+    environment:
+      HF_HOME: /data
+    command:
+      - |
+        set -eu
+        export HF_TOKEN="$$(cat /run/secrets/hf_token)"
+        exec text-embeddings-router \
+          --model-id "${EMBEDDING_MODEL:-google/embeddinggemma-300m}" \
+          --served-model-name "${EMBEDDING_MODEL:-google/embeddinggemma-300m}" \
+          --port 80 \
+          --dtype float32 \
+          --max-client-batch-size "${TEI_MAX_CLIENT_BATCH_SIZE:-32}" \
+          --max-batch-tokens "${TEI_MAX_BATCH_TOKENS:-16384}"
+    volumes: ["hope_huggingface:/data"]
+    secrets: [hf_token]
+    # Runs on the CPU, so this is ordinary host RAM competing with vLLM's
+    # unified allocation. 300M params at float32 is ~1.2GiB resident; 6g covers
+    # that plus a full 16384-token batch and caps the blast radius if a large
+    # client batch lands while the engine is loading weights.
+    mem_limit: 6g
+    ports: ["127.0.0.1:${EMBEDDING_HOST_PORT:-8002}:80"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10m
+      retries: 10
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.30.0
+    profiles: ["observability"]
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - hope_alertmanager:/alertmanager
+    ports: ["127.0.0.1:9093:9093"]
+    restart: unless-stopped
+
+  phoenix:
+    image: arizephoenix/phoenix:13.5.0
+    profiles: ["observability"]
+    environment:
+      PHOENIX_SQL_DATABASE_URL: postgresql://${PHOENIX_POSTGRES_USER:-hope_phoenix}:${PHOENIX_POSTGRES_PASSWORD:-development-only-change-me}@postgres:5432/${PHOENIX_POSTGRES_DB:-hope_phoenix}
+      PHOENIX_TELEMETRY_ENABLED: "false"
+      PHOENIX_ENABLE_PROMETHEUS: "true"
+      PHOENIX_ENABLE_STRONG_PASSWORD_POLICY: "true"
+      PHOENIX_DEFAULT_ADMIN_INITIAL_PASSWORD: ${PHOENIX_ADMIN_PASSWORD:-development-only-change-me}
+    ports: ["127.0.0.1:6006:6006"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    profiles: ["observability"]
+    command: --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.retention.time=30d
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/rules:/etc/prometheus/rules:ro
+      - hope_prometheus:/prometheus
+    ports: ["127.0.0.1:9090:9090"]
+    restart: unless-stopped
+
+  # The loki image runs as uid 10001 but Docker creates the named volume's root
+  # owned by root, so loki could not `mkdir /loki/chunks` and crash-looped from
+  # the first start. Nothing surfaced it: loki is not a Prometheus target, so
+  # there was no `up == 0` to alert on -- logs simply never arrived.
+  loki-init:
+    image: alpine:3.22
+    profiles: ["observability"]
+    command: ["chown", "-R", "10001:10001", "/loki"]
+    volumes: ["hope_loki:/loki"]
+    restart: "no"
+
+  loki:
+    image: grafana/loki:3.6.0
+    profiles: ["observability"]
+    command: -config.file=/etc/loki/config.yml
+    depends_on:
+      loki-init: { condition: service_completed_successfully }
+    volumes:
+      - ./infra/loki/config.yml:/etc/loki/config.yml:ro
+      - hope_loki:/loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.3.1
+    profiles: ["observability"]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-development-only-change-me}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    volumes:
+      - hope_grafana:/var/lib/grafana
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports: ["127.0.0.1:3001:3000"]
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.10.2-alpine
+    profiles: ["edge"]
+    volumes: ["./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"]
+    expose: ["8080"]
+    depends_on:
+      web: { condition: service_started }
+      app: { condition: service_healthy }
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.6.1
+    profiles: ["edge"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      caddy: { condition: service_started }
+    restart: unless-stopped
+
+volumes:
+  hope_pgdata:
+  hope_beat:
+  hope_alertmanager:
+  hope_redis:
+  hope_minio:
+  hope_huggingface:
+  hope_prometheus:
+  hope_loki:
+  hope_grafana:
+
+secrets:
+  hf_token:
+    file: ${HF_TOKEN_FILE:-./secrets/hf_token}

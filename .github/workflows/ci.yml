@@ -8,18 +8,161 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    # Without a live database the `postgres`-marked tests silently skip, which
+    # is how a dimension mismatch and a cross-test fingerprint collision both
+    # survived in the suite. They now run on every build.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: hope_user
+          POSTGRES_PASSWORD: hope_password
+          POSTGRES_DB: hope_jobs
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U hope_user -d hope_jobs"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://hope_user:hope_password@localhost:5432/hope_jobs
+      # Pinned explicitly so the migration and the runtime cannot disagree even
+      # if one of the two defaults is changed in isolation.
+      EMBEDDING_DIMENSION: "768"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Compose profiles are valid
+        run: |
+          touch "$RUNNER_TEMP/hf_token"
+          HF_TOKEN_FILE="$RUNNER_TEMP/hf_token" \
+            docker compose --profile platform --profile ai \
+            --profile observability config --quiet
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: "3.11"
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+      # tests/test_backup.py exercises a real pg_dump -> pg_restore -> row-count
+      # round trip, and pg_dump refuses to dump a server newer than itself. The
+      # runner ships an older client, so without this the one test that proves
+      # backups are restorable would skip on every build.
+      - name: PostgreSQL 18 client
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-18
+      # --frozen fails rather than silently re-resolving, so CI installs the
+      # exact set recorded in uv.lock and a stale lockfile is a visible error.
       - name: Install
-        run: python -m pip install -e ".[dev]"
-      - name: Tests
-        run: python -m pytest
+        run: uv sync --frozen
+      - name: Lockfile is current
+        run: uv lock --check
       - name: Ruff
-        run: python -m ruff check .
+        run: uv run ruff check .
       - name: Black
-        run: python -m black --check .
+        run: uv run black --check .
       - name: Mypy
-        run: python -m mypy src
+        run: uv run mypy src
+      # Applies the real migration chain against the service container, so a
+      # broken migration fails here rather than at deploy time. --sql only
+      # renders DDL and would not have caught, say, a bad index expression.
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+      - name: Tests
+        run: uv run python -m pytest
+      # The schedule and the alerting rules are the automation contract now.
+      # tests/test_schedules.py covers the beat entries; promtool is the only
+      # thing that catches a malformed PromQL expression before it silently
+      # fails to load in Prometheus.
+      - name: Prometheus rules
+        run: |
+          docker run --rm -v "$PWD/infra/prometheus:/p" \
+            --entrypoint promtool prom/prometheus:v3.7.3 \
+            check rules /p/rules/hope.yml
+      - name: MVP pipeline smoke test
+        run: |
+          uv run python -m hope_job_agent.pipeline.run_mvp \
+            --source approved_json \
+            --input data/sample_jobs.json \
+            --profiles data/sample_profiles.json \
+            --output "$RUNNER_TEMP/mvp_results.csv" \
+            --limit 2 \
+            --database-url "sqlite:///$RUNNER_TEMP/mvp.sqlite3"
+      # web/openapi.json is the contract the frontend types are generated from,
+      # and nothing regenerated it: it drifted a whole release behind the API,
+      # missing a new request field and an endpoint that had changed from POST
+      # to GET. Regenerating and diffing makes that a build failure instead of a
+      # runtime surprise.
+      - name: OpenAPI schema is current
+        run: |
+          uv run python scripts/export_openapi.py
+          git diff --exit-code web/openapi.json
+
+  # Nothing built either image, so a broken COPY or a bad base tag was only
+  # discovered on the deployment host. Build-only: running the stack needs
+  # secrets and a GPU, but a build failure is caught here.
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Application image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+      # Not continue-on-error: an advisory that only prints is an advisory
+      # nobody acts on. Transitive findings whose parent has no fixed release
+      # yet are pinned via the "overrides" block in web/package.json.
+      - run: npm audit --audit-level=high
+      - run: npm run lint
+      - run: npm run typecheck
+      # Types are generated, not hand-written, so a stale api.d.ts type-checks
+      # cleanly against the wrong contract. Regenerate and diff.
+      - name: Generated API types are current
+        run: |
+          npm run generate:api
+          git diff --exit-code lib/generated/api.d.ts
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      # The e2e suite was defined in package.json but never ran anywhere.
+      # It covers only public pages, so it needs no API or database.
+      - run: npx playwright install --with-deps chromium webkit
+      - run: npm run test:e2e
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: web/playwright-report/
+          retention-days: 7

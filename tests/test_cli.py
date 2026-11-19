@@ -64,6 +64,60 @@ def test_cli_run_pipeline_prints_summary_and_writes_output(
     assert database_path.exists()
 
 
+def test_cli_run_pipeline_selects_ksbit_export_source(tmp_path, capsys, monkeypatch):
+    output_path = tmp_path / "ksbit_pipeline_results.json"
+    database_path = tmp_path / "ksbit_pipeline.sqlite3"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+
+    main(
+        [
+            "run-pipeline",
+            "--source",
+            "ksbit_export",
+            "--source-file",
+            "data/sample_ksbit_jobs.json",
+            "--output-file",
+            str(output_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert "Pipeline run complete" in captured.out
+    assert "Source: ksbit_export" in captured.out
+    assert output_path.exists()
+    assert database_path.exists()
+    assert payload["jobs"]
+    assert {job["source"] for job in payload["jobs"]} == {"ksbit_export"}
+
+
+def test_cli_run_pipeline_uses_ksbit_export_path_setting(tmp_path, capsys, monkeypatch):
+    output_path = tmp_path / "ksbit_pipeline_results.json"
+    database_path = tmp_path / "ksbit_pipeline.sqlite3"
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{database_path.as_posix()}")
+    monkeypatch.setenv("KSBIT_EXPORT_PATH", "data/sample_ksbit_jobs.json")
+
+    main(
+        [
+            "run-pipeline",
+            "--source",
+            "ksbit_export",
+            "--output-file",
+            str(output_path),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    payload = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert "Source: ksbit_export" in captured.out
+    assert "Source file: data/sample_ksbit_jobs.json" in captured.out
+    assert output_path.exists()
+    assert database_path.exists()
+    assert {job["source"] for job in payload["jobs"]} == {"ksbit_export"}
+
+
 def test_cli_run_pipeline_fails_for_unreadable_source(tmp_path, capsys):
     missing_path = tmp_path / "missing.json"
 
@@ -83,3 +137,13 @@ def test_cli_evaluate_prints_report(capsys):
     assert "Evaluation complete" in captured.out
     assert "Role accuracy:" in captured.out
     assert "Ranking relevance@3:" in captured.out
+
+
+def test_cli_evaluate_taxonomy_prints_per_class_metrics(capsys):
+    main(["evaluate-taxonomy", "--dataset", "fixture"])
+
+    captured = capsys.readouterr()
+    assert "Taxonomy calibration report" in captured.out
+    assert "Concentrations" in captured.out
+    assert "Digital Platforms and Security" in captured.out
+    assert "macro_f1" in captured.out

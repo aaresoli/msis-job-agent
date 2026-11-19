@@ -1,0 +1,41 @@
+version: 2
+
+# Dependency floors are only meaningful if something keeps them moving. Grouped
+# so routine bumps arrive as a few reviewable PRs rather than one per package.
+updates:
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-dev-tooling:
+        patterns: ["ruff", "black", "mypy", "pytest*", "coverage"]
+      python-runtime:
+        patterns: ["*"]
+        exclude-patterns: ["ruff", "black", "mypy", "pytest*", "coverage"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-patch:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Keeps the pinned base images in both Dockerfiles current. Compose service
+  # images are not covered by Dependabot and still need a manual sweep.
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /web
+    schedule:
+      interval: weekly

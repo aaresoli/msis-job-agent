@@ -1,0 +1,35 @@
+# Routes platform alerts to the same mailbox as everything else the platform
+# sends. Locally that is the mailpit container on :8025, so an alert can be
+# verified end to end without an external provider. Point SMTP_HOST at a real
+# relay and change the two addresses below to deliver for real -- no other
+# change is needed.
+global:
+  smtp_smarthost: "mailpit:1025"
+  smtp_from: "HOPE Alerts <alerts@hope.local>"
+  # mailpit speaks plain SMTP and does not advertise STARTTLS. A real relay
+  # must have this back at true.
+  smtp_require_tls: false
+
+route:
+  receiver: platform-email
+  # Alerts arriving together (a restart trips several at once) are batched into
+  # one message rather than one message each.
+  group_by: ["alertname", "severity"]
+  group_wait: 30s
+  group_interval: 5m
+  # Long enough that an unresolved alert does not become background noise, short
+  # enough that it is not forgotten.
+  repeat_interval: 12h
+
+# A down scheduler makes every downstream schedule fail too; sending only the
+# cause keeps the mail actionable.
+inhibit_rules:
+  - source_matchers: ["alertname = HopeBeatDown"]
+    target_matchers: ["alertname =~ HopeBackupStale|HopeOutboxBacklog"]
+    equal: []
+
+receivers:
+  - name: platform-email
+    email_configs:
+      - to: "platform@hope.local"
+        send_resolved: true

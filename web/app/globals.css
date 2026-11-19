@@ -1,0 +1,114 @@
+@import '@fontsource/fraunces/600.css' layer(base);
+@import '@fontsource/source-sans-3/400.css' layer(base);
+@import '@fontsource/source-sans-3/600.css' layer(base);
+
+@import 'tailwindcss';
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+/*
+  v4 is CSS-first: naming these under @theme registers them as real design
+  tokens, so `text-crimson` and `bg-paper` work as utilities. The same hex
+  values were previously repeated inline across the pages as arbitrary values,
+  with nothing tying them together.
+
+  Tailwind exposes each one as a --color-* custom property, so the plain CSS
+  rules below still reference them directly.
+*/
+@theme {
+  --color-paper: #f2eee4;
+  --color-paper-deep: #e8dfce;
+  --color-ink: #171713;
+  --color-muted: #686258;
+  --color-ink-soft: #554f47;
+  --color-crimson: #7a170f;
+  --color-crimson-bright: #a6261b;
+  --color-sage: #b9c8a2;
+  /* Semantic: an attribute the posting explicitly states, vs inferred. */
+  --color-affirm: #4e673e;
+  --color-line: rgba(23, 23, 19, 0.17);
+  --color-paper-white: #fffdf7;
+}
+
+:root {
+  --paper: var(--color-paper);
+  --paper-deep: var(--color-paper-deep);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --crimson: var(--color-crimson);
+  --crimson-bright: var(--color-crimson-bright);
+  --sage: var(--color-sage);
+  --line: var(--color-line);
+  --white: var(--color-paper-white);
+}
+
+* { box-sizing: border-box; }
+html { background: var(--paper); color: var(--ink); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Source Sans 3", sans-serif;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(185, 200, 162, .35), transparent 28rem),
+    linear-gradient(90deg, rgba(122, 23, 15, .03) 1px, transparent 1px),
+    var(--paper);
+  background-size: auto, 72px 72px, auto;
+}
+
+h1, h2, h3, .display { font-family: "Fraunces", serif; letter-spacing: -.025em; }
+a { color: inherit; text-decoration: none; }
+button, input, textarea, select { font: inherit; }
+button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
+  outline: 3px solid var(--crimson-bright);
+  outline-offset: 3px;
+}
+
+.shell { width: min(1380px, calc(100% - 32px)); margin: 0 auto; }
+.editorial-grid { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 28px; }
+.paper-card {
+  background: rgba(255, 253, 247, .82);
+  border: 1px solid var(--line);
+  box-shadow: 0 20px 70px rgba(63, 46, 31, .08);
+  backdrop-filter: blur(12px);
+}
+.eyebrow { color: var(--crimson); font-size: .76rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+.rule { border-top: 1px solid var(--line); }
+.button-primary {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  border: 1px solid var(--crimson); background: var(--crimson); color: white;
+  padding: 11px 17px; cursor: pointer; transition: transform .2s, background .2s;
+}
+.button-primary:hover { background: var(--crimson-bright); transform: translateY(-2px); }
+.button-quiet { border: 1px solid var(--line); background: transparent; padding: 10px 14px; cursor: pointer; }
+.tag { display: inline-flex; padding: 4px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: .78rem; }
+.score-ring {
+  width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(var(--crimson) var(--score), var(--paper-deep) 0);
+  position: relative; font-weight: 600;
+}
+.score-ring::after { content: ""; position: absolute; inset: 6px; background: var(--white); border-radius: inherit; }
+.score-ring span { position: relative; z-index: 1; }
+.reveal { animation: rise .55s both; }
+@keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 900px) {
+  .editorial-grid { grid-template-columns: 1fr; }
+  .shell { width: min(100% - 22px, 760px); }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

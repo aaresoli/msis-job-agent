@@ -1,0 +1,20 @@
+.git
+.github
+.venv
+.mypy_cache
+.pytest_cache
+.ruff_cache
+__pycache__
+*.pyc
+*.egg-info
+
+# Local run artifacts and secrets, never part of an image.
+.env
+outputs
+data/*.sqlite3
+
+# The API image does not serve the frontend; web/ has its own Dockerfile.
+web
+n8n
+docs
+tests

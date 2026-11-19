@@ -35,7 +35,7 @@
     "postcss": "^8.5.20",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.2",
-    "vitest": "4.1.10"
+    "vitest": "5.1.0"
   },
   "//overrides": [
     "Both entries patch a transitive dependency whose parent has not shipped a",

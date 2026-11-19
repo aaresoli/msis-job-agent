@@ -3,7 +3,7 @@
 # Build stage: resolve dependencies from uv.lock into a self-contained venv.
 # uv arrives as a pinned binary rather than via a combined uv+python tag, so
 # the uv version and the Python version are pinned independently.
-FROM python:3.14-slim-bookworm AS builder
+FROM python:3.15-slim-bookworm AS builder
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.8 /uv /uvx /bin/
 
@@ -27,7 +27,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 
 # Runtime stage: the venv and the application, no build tooling, no uv.
-FROM python:3.14-slim-bookworm AS runtime
+FROM python:3.15-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
